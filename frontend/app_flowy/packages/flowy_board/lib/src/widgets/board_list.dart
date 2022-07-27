@@ -1,15 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'board_overlay.dart';
+import 'board_mixin.dart';
+import 'drag_target.dart';
+import 'dart:math';
 
-typedef OnDragStarted = void Function();
+part 'board_list_content.dart';
+
+typedef OnDragStarted = void Function(int index);
 typedef OnDragCompleted = void Function();
 typedef OnDragEnded = void Function();
-typedef OnDargUpdated = void Function();
+typedef OnDargUpdated = void Function(int fromIndex, int toIndex);
 
 class BoardListConfig {
   final bool needsLongPressDraggable = true;
   final double draggingWidgetOpacity = 0.2;
-  final Duration reorderAnimationDuration = const Duration(microseconds: 250);
+  final Duration reorderAnimationDuration = const Duration(milliseconds: 250);
+  final Duration scrollAnimationDuration = const Duration(milliseconds: 250);
 
   const BoardListConfig();
 }
@@ -21,7 +28,7 @@ class BoardList extends StatefulWidget {
   final ScrollController? scrollController;
   final BoardListConfig config;
   final OnDragStarted? onDragStarted;
-  final OnDargUpdated? onDargUpdated;
+  final OnDargUpdated? onDragUpdated;
   final OnDragCompleted? onDragCompleted;
   final OnDragEnded? onDragEnded;
 
@@ -33,7 +40,7 @@ class BoardList extends StatefulWidget {
     this.scrollController,
     this.config = const BoardListConfig(),
     this.onDragStarted,
-    this.onDargUpdated,
+    this.onDragUpdated,
     this.onDragCompleted,
     this.onDragEnded,
   })  : assert(
@@ -45,6 +52,8 @@ class BoardList extends StatefulWidget {
   State<BoardList> createState() => _BoardListState();
 }
 
+final GlobalKey _overlayKey = GlobalKey(debugLabel: '$BoardList overlay key');
+
 class _BoardListState extends State<BoardList> {
   late BoardOverlayEntry _overlayEntry;
 
@@ -52,7 +61,17 @@ class _BoardListState extends State<BoardList> {
   void initState() {
     _overlayEntry = BoardOverlayEntry(
         builder: (BuildContext context) {
-          return Container();
+          return _BoardListContentWidget(
+            header: widget.header,
+            footer: widget.footer,
+            scrollController: widget.scrollController,
+            config: widget.config,
+            onDragStarted: widget.onDragStarted,
+            onDargUpdated: widget.onDragUpdated,
+            onDragCompleted: widget.onDragCompleted,
+            onDragEnded: widget.onDragEnded,
+            children: widget.children,
+          );
         },
         opaque: false);
     super.initState();
@@ -60,6 +79,9 @@ class _BoardListState extends State<BoardList> {
 
   @override
   Widget build(BuildContext context) {
-    return Container();
+    return BoardOverlay(
+      key: _overlayKey,
+      initialEntries: [_overlayEntry],
+    );
   }
 }
