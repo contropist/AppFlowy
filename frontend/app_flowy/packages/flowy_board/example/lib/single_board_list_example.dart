@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-
 import 'package:flowy_board/flowy_board.dart';
 
 class SingleBoardListExample extends StatefulWidget {
@@ -18,11 +17,21 @@ class _SingleBoardListExampleState extends State<SingleBoardListExample> {
       return _RowWidget(text: row, key: ObjectKey(row));
     }).toList();
 
-    return Container(
-      color: Colors.yellow,
-      child: BoardList(
-        children: children,
-      ),
+    return BoardList(
+      children: children,
+      onDragStarted: (index) {
+        debugPrint("[drag] $index");
+      },
+      onReorder: (from, to) {
+        debugPrint("[drag] from:$from to:$to");
+        setState(() {
+          final row = rows.removeAt(from);
+          rows.insert(to, row);
+        });
+      },
+      onDragEnded: () {
+        debugPrint("[drag] end");
+      },
     );
   }
 }

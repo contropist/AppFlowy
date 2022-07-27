@@ -8,9 +8,8 @@ import 'dart:math';
 part 'board_list_content.dart';
 
 typedef OnDragStarted = void Function(int index);
-typedef OnDragCompleted = void Function();
 typedef OnDragEnded = void Function();
-typedef OnDargUpdated = void Function(int fromIndex, int toIndex);
+typedef OnReorder = void Function(int fromIndex, int toIndex);
 
 class BoardListConfig {
   final bool needsLongPressDraggable = true;
@@ -28,8 +27,7 @@ class BoardList extends StatefulWidget {
   final ScrollController? scrollController;
   final BoardListConfig config;
   final OnDragStarted? onDragStarted;
-  final OnDargUpdated? onDragUpdated;
-  final OnDragCompleted? onDragCompleted;
+  final OnReorder? onReorder;
   final OnDragEnded? onDragEnded;
 
   BoardList({
@@ -40,8 +38,7 @@ class BoardList extends StatefulWidget {
     this.scrollController,
     this.config = const BoardListConfig(),
     this.onDragStarted,
-    this.onDragUpdated,
-    this.onDragCompleted,
+    this.onReorder,
     this.onDragEnded,
   })  : assert(
           children.every((Widget widget) => widget.key != null),
@@ -52,9 +49,9 @@ class BoardList extends StatefulWidget {
   State<BoardList> createState() => _BoardListState();
 }
 
-final GlobalKey _overlayKey = GlobalKey(debugLabel: '$BoardList overlay key');
-
 class _BoardListState extends State<BoardList> {
+  final GlobalKey _overlayKey = GlobalKey(debugLabel: '$BoardList overlay key');
+
   late BoardOverlayEntry _overlayEntry;
 
   @override
@@ -67,8 +64,7 @@ class _BoardListState extends State<BoardList> {
             scrollController: widget.scrollController,
             config: widget.config,
             onDragStarted: widget.onDragStarted,
-            onDargUpdated: widget.onDragUpdated,
-            onDragCompleted: widget.onDragCompleted,
+            onReorder: widget.onReorder,
             onDragEnded: widget.onDragEnded,
             children: widget.children,
           );

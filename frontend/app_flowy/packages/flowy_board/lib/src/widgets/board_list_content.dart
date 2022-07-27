@@ -7,8 +7,7 @@ class _BoardListContentWidget extends StatefulWidget {
   final ScrollController? scrollController;
   final BoardListConfig config;
   final OnDragStarted? onDragStarted;
-  final OnDargUpdated? onDargUpdated;
-  final OnDragCompleted? onDragCompleted;
+  final OnReorder? onReorder;
   final OnDragEnded? onDragEnded;
   final EdgeInsets? padding;
   final Axis direction = Axis.vertical;
@@ -22,8 +21,7 @@ class _BoardListContentWidget extends StatefulWidget {
     this.scrollController,
     required this.config,
     this.onDragStarted,
-    this.onDargUpdated,
-    this.onDragCompleted,
+    this.onReorder,
     this.onDragEnded,
     // ignore: unused_element
     this.padding,
@@ -176,8 +174,6 @@ class _BoardListContentWidgetState extends State<_BoardListContentWidget>
         Widget entranceSpacing = _makeAppearingWidget(dragSpace, feedbackSize);
         Widget ghostSpacing = _makeDisappearingWidget(dragSpace, feedbackSize);
 
-        debugPrint("feedbackSize: $feedbackSize");
-
         ///
         if (_dragState.isGhostAboveDragTarget()) {
           //the ghost is moving down, i.e. the tile below the ghost is moving up
@@ -277,6 +273,7 @@ class _BoardListContentWidgetState extends State<_BoardListContentWidget>
             _dragState.currentIndex,
           );
           _dragState.endDragging();
+          widget.onDragEnded?.call();
         });
       },
       onWillAccept: (int? toAccept) {
@@ -311,7 +308,7 @@ class _BoardListContentWidgetState extends State<_BoardListContentWidget>
 
   void _onReordered(int fromIndex, int toIndex) {
     if (fromIndex != toIndex) {
-      widget.onDargUpdated?.call(fromIndex, toIndex);
+      widget.onReorder?.call(fromIndex, toIndex);
     }
 
     _animationController.performReorderAnimation();
