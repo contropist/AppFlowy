@@ -1,19 +1,20 @@
 import 'package:flutter/material.dart';
 
+import '../../flowy_board.dart';
+
 /// [BoardDragTarget] is a [DragTarget] that carries the index information of
 /// the child.
 ///
 /// The size of the [BoardDragTarget] will become zero when it start dragging.
 ///
 class BoardDragTarget extends StatefulWidget {
-  final int index;
   final Widget child;
-  final Axis direction;
+  final DraggingData draggingData;
 
   final GlobalObjectKey _indexGlobalKey;
 
   /// Called when dragTarget is being dragging.
-  final void Function(Widget, int, Size?) onDragStarted;
+  final void Function(Widget, DraggingData, Size?) onDragStarted;
 
   final void Function() onDragEnded;
 
@@ -22,22 +23,21 @@ class BoardDragTarget extends StatefulWidget {
   ///
   /// [toAccept] represents the dragTarget index, which is the value passed in
   /// when creating the [BoardDragTarget].
-  final bool Function(int? toAccept) onWillAccept;
+  final bool Function(DraggingData? toAccept) onWillAccept;
 
   /// Called when an acceptable piece of data was dropped over this drag target.
   ///
   /// Equivalent to [onAcceptWithDetails], but only includes the data.
-  final void Function(int)? onAccept;
+  final void Function(DraggingData)? onAccept;
 
   /// Called when a given piece of data being dragged over this target leaves
   /// the target.
-  final void Function(int?)? onLeave;
+  final void Function(DraggingData?)? onLeave;
 
   BoardDragTarget({
     Key? key,
     required this.child,
-    required this.direction,
-    required this.index,
+    required this.draggingData,
     required this.onDragStarted,
     required this.onDragEnded,
     required this.onWillAccept,
@@ -56,7 +56,7 @@ class _BoardDragTargetState extends State<BoardDragTarget> {
 
   @override
   Widget build(BuildContext context) {
-    Widget dragTarget = DragTarget<int>(
+    Widget dragTarget = DragTarget<DraggingData>(
       builder: _buildDraggableWidget,
       onWillAccept: widget.onWillAccept,
       onAccept: widget.onAccept,
@@ -69,7 +69,7 @@ class _BoardDragTargetState extends State<BoardDragTarget> {
 
   Widget _buildDraggableWidget(
     BuildContext context,
-    List<int?> acceptedCandidates,
+    List<DraggingData?> acceptedCandidates,
     List<dynamic> rejectedCandidates,
   ) {
     Widget feedbackBuilder = Builder(builder: (BuildContext context) {
@@ -83,16 +83,19 @@ class _BoardDragTargetState extends State<BoardDragTarget> {
       );
     });
 
-    return LongPressDraggable<int>(
+    return LongPressDraggable<DraggingData>(
       maxSimultaneousDrags: 1,
-      axis: widget.direction,
-      data: widget.index,
+      data: widget.draggingData,
       ignoringFeedbackSemantics: false,
       feedback: feedbackBuilder,
       childWhenDragging: _buildNoSizedDraggingWidget(widget.child),
       onDragStarted: () {
         _draggingFeedbackSize = widget._indexGlobalKey.currentContext?.size;
-        widget.onDragStarted(widget.child, widget.index, _draggingFeedbackSize);
+        widget.onDragStarted(
+          widget.child,
+          widget.draggingData,
+          _draggingFeedbackSize,
+        );
       },
       dragAnchorStrategy: childDragAnchorStrategy,
       // When the drag ends inside a DragTarget widget, the drag
@@ -292,4 +295,19 @@ class DragState {
     }
     return shiftedIndex;
   }
+}
+
+/// [DraggingData] is used to store the custom dragging data. It can be used to
+/// locate the index of the dragging widget in the [BoardList].
+class DraggingData {
+  /// The index of the dragging target in the boardList.
+  final int dragIndex;
+
+  /// Indicate the dargging come from which [BoardListContentWidget].
+  final BoardListContentWidget boardList;
+
+  const DraggingData({
+    required this.dragIndex,
+    required this.boardList,
+  });
 }

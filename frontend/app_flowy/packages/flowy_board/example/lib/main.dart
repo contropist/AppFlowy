@@ -18,8 +18,8 @@ class _MyAppState extends State<MyApp> {
   final _bottomNavigationColor = Colors.blue;
 
   final List<Widget> _examples = [
-    const SingleBoardListExample(),
     const MultiBoardListExample(),
+    const SingleBoardListExample(),
   ];
 
   @override
@@ -43,10 +43,10 @@ class _MyAppState extends State<MyApp> {
             items: [
               BottomNavigationBarItem(
                   icon: Icon(Icons.grid_on, color: _bottomNavigationColor),
-                  label: "SingleBoardList"),
+                  label: "MultiBoardList"),
               BottomNavigationBarItem(
                   icon: Icon(Icons.grid_on, color: _bottomNavigationColor),
-                  label: "MultiBoardList"),
+                  label: "SingleBoardList"),
             ],
             onTap: (int index) {
               setState(() {

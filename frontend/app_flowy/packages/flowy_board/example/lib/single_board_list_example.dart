@@ -19,7 +19,7 @@ class _SingleBoardListExampleState extends State<SingleBoardListExample> {
 
     return BoardList(
       children: children,
-      onDragStarted: (index) {
+      onDragStarted: (list, index) {
         debugPrint("[drag] $index");
       },
       onReorder: (from, to) {
@@ -29,8 +29,14 @@ class _SingleBoardListExampleState extends State<SingleBoardListExample> {
           rows.insert(to, row);
         });
       },
-      onDragEnded: () {
+      onDragEnded: (_) {
         debugPrint("[drag] end");
+      },
+      onDeleted: (int deletedIndex) {
+        throw UnimplementedError;
+      },
+      onInserted: (int insertedIndex, BoardListItem newItem) {
+        throw UnimplementedError;
       },
     );
   }

@@ -1,19 +1,25 @@
 part of 'board_list.dart';
 
-class _BoardListContentWidget extends StatefulWidget {
+typedef OnContentDragStarted = void Function(int index);
+typedef OnContentDragEnded = void Function();
+typedef OnContentReorder = void Function(int fromIndex, int toIndex);
+
+class BoardListContentWidget extends StatefulWidget {
   final Widget? header;
   final Widget? footer;
   final List<Widget> children;
   final ScrollController? scrollController;
   final BoardListConfig config;
-  final OnDragStarted? onDragStarted;
-  final OnReorder? onReorder;
-  final OnDragEnded? onDragEnded;
+  final OnContentDragStarted? onDragStarted;
+  final OnContentReorder onReorder;
+  final OnContentDragEnded? onDragEnded;
+  final OnDeleted onDeleted;
+  final OnInserted onInserted;
   final EdgeInsets? padding;
   final Axis direction = Axis.vertical;
   final MainAxisAlignment mainAxisAlignment = MainAxisAlignment.start;
 
-  const _BoardListContentWidget({
+  const BoardListContentWidget({
     Key? key,
     this.header,
     this.footer,
@@ -21,19 +27,20 @@ class _BoardListContentWidget extends StatefulWidget {
     this.scrollController,
     required this.config,
     this.onDragStarted,
-    this.onReorder,
+    required this.onReorder,
     this.onDragEnded,
+    required this.onDeleted,
+    required this.onInserted,
     // ignore: unused_element
     this.padding,
   }) : super(key: key);
 
   @override
-  State<_BoardListContentWidget> createState() =>
-      _BoardListContentWidgetState();
+  State<BoardListContentWidget> createState() => BoardListContentWidgetState();
 }
 
-class _BoardListContentWidgetState extends State<_BoardListContentWidget>
-    with BoardMixin, TickerProviderStateMixin<_BoardListContentWidget> {
+class BoardListContentWidgetState extends State<BoardListContentWidget>
+    with BoardMixin, TickerProviderStateMixin<BoardListContentWidget> {
   // Controls scrolls and measures scroll progress.
   late ScrollController _scrollController;
   ScrollPosition? _attachedScrollPosition;
@@ -257,14 +264,14 @@ class _BoardListContentWidgetState extends State<_BoardListContentWidget>
   BoardDragTarget _buildDragTarget(
       BuildContext builderContext, Widget child, int childIndex) {
     return BoardDragTarget(
-      direction: widget.direction,
-      index: childIndex,
-      onDragStarted: (draggingWidget, index, size) {
+      draggingData: DraggingData(dragIndex: childIndex, boardList: widget),
+      onDragStarted: (draggingWidget, draggingData, size) {
         setState(() {
-          _dragState.startDragging(draggingWidget, index, size);
+          _dragState.startDragging(
+              draggingWidget, draggingData.dragIndex, size);
           _animationController.startDargging();
         });
-        widget.onDragStarted?.call(index);
+        widget.onDragStarted?.call(draggingData.dragIndex);
       },
       onDragEnded: () {
         setState(() {
@@ -276,19 +283,39 @@ class _BoardListContentWidgetState extends State<_BoardListContentWidget>
           widget.onDragEnded?.call();
         });
       },
-      onWillAccept: (int? toAccept) {
-        return _onWillAccept(builderContext, toAccept, childIndex);
+      onWillAccept: (DraggingData? draggingData) {
+        if (widget != draggingData?.boardList) {
+          return _onWillAcceptNewItem(builderContext, draggingData, childIndex);
+        } else {
+          return _onWillAccept(builderContext, draggingData, childIndex);
+        }
       },
       child: child,
     );
   }
 
-  bool _onWillAccept(BuildContext context, int? toAcceptIndex, int childIndex) {
+  bool _onWillAcceptNewItem(
+      BuildContext context, DraggingData? draggingData, int childIndex) {
+    if (draggingData != null) {
+      debugPrint(
+          'move ${draggingData.boardList}:${draggingData.dragIndex} data to $widget:$childIndex');
+
+      // final item = draggingData.boardList.onDeleted(draggingData.dragIndex);
+      // widget.onInserted(childIndex, item);
+    }
+
+    return false;
+  }
+
+  bool _onWillAccept(
+      BuildContext context, DraggingData? draggingData, int childIndex) {
     /// The [willAccept] will be true if the dargTarget is the widget that gets
     /// dragged and it is dragged on top of the other dragTargets.
+    final toAcceptIndex = draggingData?.dragIndex;
     bool willAccept = _dragState.dragStartIndex == toAcceptIndex &&
         toAcceptIndex != childIndex;
 
+    debugPrint("$this: acceptIndex: $toAcceptIndex, childIndex: $childIndex");
     setState(() {
       if (willAccept) {
         int shiftedIndex = _dragState.calculateShiftedIndex(childIndex);
@@ -308,7 +335,7 @@ class _BoardListContentWidgetState extends State<_BoardListContentWidget>
 
   void _onReordered(int fromIndex, int toIndex) {
     if (fromIndex != toIndex) {
-      widget.onReorder?.call(fromIndex, toIndex);
+      widget.onReorder.call(fromIndex, toIndex);
     }
 
     _animationController.performReorderAnimation();
