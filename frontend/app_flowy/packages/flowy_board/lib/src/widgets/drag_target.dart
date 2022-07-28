@@ -314,6 +314,8 @@ class DraggingData {
   /// Indicate the dargging come from which [BoardListContentWidget].
   final BoardListContentWidget boardList;
 
+  BoardListItem get dragData => boardList.items[dragIndex];
+
   const DraggingData({
     required this.dragIndex,
     required this.dragState,

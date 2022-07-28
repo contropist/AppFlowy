@@ -12,36 +12,64 @@ part 'board_list_content.dart';
 typedef OnDragStarted = void Function(String listId, int index);
 typedef OnDragEnded = void Function(String listId);
 typedef OnReorder = void Function(String listId, int fromIndex, int toIndex);
-typedef OnWillDeleted = void Function(String listId, int deletedIndex);
-typedef OnWillInserted = void Function(String listId, int insertedIndex);
+typedef OnDeleted = void Function(String listId, int deletedIndex);
+typedef OnInserted = void Function(String listId, int insertedIndex);
+typedef OnWillInsert = void Function(
+    String listId, int insertedIndex, BoardListItem item);
 
 class BoardListData extends ChangeNotifier with EquatableMixin {
   final String id;
-  final List<BoardListItem> items;
+  final List<BoardListItem> _items;
 
   BoardListData({
     required this.id,
-    required this.items,
-  });
+    required List<BoardListItem> items,
+  }) : _items = items;
 
   @override
-  List<Object?> get props => [id, ...items];
+  List<Object?> get props => [id, ..._items];
 
   BoardListItem removeAt(int index) {
-    final item = items.removeAt(index);
+    final item = _items.removeAt(index);
     notifyListeners();
     return item;
   }
 
   void move(int fromIndex, int toIndex) {
-    final item = items.removeAt(fromIndex);
-    items.insert(toIndex, item);
+    if (fromIndex == toIndex) {
+      return;
+    }
+
+    final item = _items.removeAt(fromIndex);
+    _items.insert(toIndex, item);
     notifyListeners();
   }
 
   void insert(int index, BoardListItem item) {
-    items.insert(index, item);
+    _items.insert(index, item);
     notifyListeners();
+  }
+
+  void insertPhantom(int insertedIndex, BoardListPhantomItem phantomItem) {
+    final index = _items.indexWhere((item) => item.isPhantom);
+    if (index != -1) {
+      if (index != insertedIndex) {
+        Log.debug(
+            '[phantom] Move phantom from $id:$index to $id:$insertedIndex');
+        move(index, insertedIndex);
+      }
+    } else {
+      Log.debug('[phantom] insert phantom at $id:$insertedIndex');
+      insert(insertedIndex, phantomItem);
+    }
+  }
+
+  void removePhantom() {
+    final index = _items.indexWhere((item) => item.isPhantom);
+    if (index != -1) {
+      Log.debug('[phantom] Remove phantom at $id:$index to');
+      removeAt(index);
+    }
   }
 }
 
@@ -54,7 +82,20 @@ class BoardListConfig {
 }
 
 abstract class BoardListItem {
-  // String get uniqueId;
+  bool get isPhantom => false;
+  String get id;
+}
+
+class BoardListPhantomItem implements BoardListItem {
+  final BoardListItem inner;
+
+  BoardListPhantomItem(this.inner);
+
+  @override
+  bool get isPhantom => true;
+
+  @override
+  String get id => inner.id;
 }
 
 typedef BoardListItemWidgetBuilder = Widget Function(
@@ -70,8 +111,9 @@ class BoardList extends StatefulWidget {
   final OnDragStarted? onDragStarted;
   final OnReorder onReorder;
   final OnDragEnded? onDragEnded;
-  final OnWillDeleted onWillDeleted;
-  final OnWillInserted onWillInserted;
+  final OnDeleted onDeleted;
+  final OnInserted onInserted;
+  final OnWillInsert onWillInserted;
 
   String get listId => listData.id;
 
@@ -86,7 +128,8 @@ class BoardList extends StatefulWidget {
     this.onDragStarted,
     required this.onReorder,
     this.onDragEnded,
-    required this.onWillDeleted,
+    required this.onDeleted,
+    required this.onInserted,
     required this.onWillInserted,
   }) : super(key: key);
 
@@ -103,9 +146,15 @@ class _BoardListState extends State<BoardList> {
   void initState() {
     _overlayEntry = BoardOverlayEntry(
         builder: (BuildContext context) {
-          final children = widget.listData.items.map((item) {
-            return widget.builder(context, item);
+          final children = widget.listData._items.map((item) {
+            if (item.isPhantom) {
+              return widget.builder(
+                  context, (item as BoardListPhantomItem).inner);
+            } else {
+              return widget.builder(context, item);
+            }
           }).toList();
+          Log.debug('${widget.listId} has ${children.length} children');
 
           return BoardListContentWidget(
             key: widget.key,
@@ -122,12 +171,16 @@ class _BoardListState extends State<BoardList> {
             onDragEnded: () {
               widget.onDragEnded?.call(widget.listId);
             },
-            onWillDeleted: (deletedIndex) {
-              widget.onWillDeleted(widget.listId, deletedIndex);
+            onDeleted: (deletedIndex) {
+              widget.onDeleted(widget.listId, deletedIndex);
             },
-            onWillInserted: (insertedIndex) {
-              widget.onWillInserted(widget.listId, insertedIndex);
+            onInserted: (insertedIndex) {
+              widget.onInserted(widget.listId, insertedIndex);
             },
+            onWillInserted: (insertedIndex, item) {
+              widget.onWillInserted(widget.listId, insertedIndex, item);
+            },
+            items: widget.listData._items,
             children: children,
           );
         },

@@ -5,18 +5,22 @@ typedef OnContentDragEnded = void Function();
 typedef OnContentReorder = void Function(int fromIndex, int toIndex);
 typedef OnContentDeleted = void Function(int deletedIndex);
 typedef OnContentInserted = void Function(int insertedIndex);
+typedef OnContentWillInserted = void Function(
+    int insertedIndex, BoardListItem item);
 
 class BoardListContentWidget extends StatefulWidget {
   final Widget? header;
   final Widget? footer;
+  final List<BoardListItem> items;
   final List<Widget> children;
   final ScrollController? scrollController;
   final BoardListConfig config;
   final OnContentDragStarted? onDragStarted;
   final OnContentReorder onReorder;
   final OnContentDragEnded? onDragEnded;
-  final OnContentDeleted onWillDeleted;
-  final OnContentInserted onWillInserted;
+  final OnContentDeleted onDeleted;
+  final OnContentInserted onInserted;
+  final OnContentWillInserted onWillInserted;
   final EdgeInsets? padding;
   final Axis direction = Axis.vertical;
   final MainAxisAlignment mainAxisAlignment = MainAxisAlignment.start;
@@ -25,13 +29,15 @@ class BoardListContentWidget extends StatefulWidget {
     Key? key,
     this.header,
     this.footer,
+    required this.items,
     required this.children,
     this.scrollController,
     required this.config,
     this.onDragStarted,
     required this.onReorder,
     this.onDragEnded,
-    required this.onWillDeleted,
+    required this.onDeleted,
+    required this.onInserted,
     required this.onWillInserted,
     // ignore: unused_element
     this.padding,
@@ -292,18 +298,26 @@ class BoardListContentWidgetState extends State<BoardListContentWidget>
       onWillAccept: (DraggingData draggingData) {
         var willAccept = true;
         if (widget == draggingData.boardList) {
+          /// The dragTarget is dragging to the top of the original list.
           willAccept = _onWillAccept(builderContext, draggingData, childIndex);
         } else {
           Log.debug('Moving List${draggingData.boardList.key} item '
               'from index ${draggingData.dragIndex} '
               'to List${widget.key} index $childIndex');
+
+          /// The childIndex must be less than the current list length.
+          assert(widget.items.length > childIndex);
+          if (widget.items.length > childIndex) {
+            widget.onWillInserted(childIndex, draggingData.dragData);
+          }
         }
         return willAccept;
       },
       onAccept: (draggingData) {
         if (widget != draggingData.boardList) {
-          draggingData.boardList.onWillDeleted(draggingData.dragIndex);
-          widget.onWillInserted(childIndex);
+          /// The dragTarget was moved to another list.
+          draggingData.boardList.onDeleted(draggingData.dragIndex);
+          widget.onInserted(childIndex);
         }
       },
       child: child,

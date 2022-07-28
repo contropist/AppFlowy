@@ -12,6 +12,13 @@ class DraggingItem {
   DraggingItem(this.listId, this.index);
 }
 
+class PhantomItem {
+  final String listId;
+  final BoardListPhantomItem item;
+
+  PhantomItem(this.listId, this.item);
+}
+
 class BoardData extends ChangeNotifier with EquatableMixin {
   final LinkedHashMap<String, BoardListData> lists = LinkedHashMap();
 
@@ -20,6 +27,8 @@ class BoardData extends ChangeNotifier with EquatableMixin {
 
   /// The index that the dragging widget moved into another list.
   DraggingItem? insertItem;
+
+  PhantomItem? phantomItem;
 
   BoardData();
 
@@ -42,6 +51,21 @@ class BoardData extends ChangeNotifier with EquatableMixin {
     insertItem = DraggingItem(listId, index);
   }
 
+  void insertPhantom(String listId, int insertedIndex, BoardListItem item) {
+    Log.debug('[phantom] Try insert phantom  $listId:$insertedIndex');
+    final boardListItem = BoardListPhantomItem(item);
+    if (phantomItem != null) {
+      if (phantomItem!.listId != listId) {
+        lists[phantomItem!.listId]?.removePhantom();
+      } else {
+        lists[phantomItem!.listId]?.insertPhantom(insertedIndex, boardListItem);
+      }
+    } else {
+      phantomItem = PhantomItem(listId, boardListItem);
+      lists[listId]?.insertPhantom(insertedIndex, boardListItem);
+    }
+  }
+
   void swapListDataIfNeed() {
     if (insertItem == null) return;
     assert(removeItem != null);
@@ -55,14 +79,19 @@ class BoardData extends ChangeNotifier with EquatableMixin {
     final item = lists[removeListId]?.removeAt(removeIndex);
     assert(item != null);
 
-    removeItem = null;
-    insertItem = null;
+    if (phantomItem != null) {
+      lists[phantomItem!.listId]?.removePhantom();
+    }
 
     if (item != null) {
       Log.info(
           'Did move item from List$removeListId:$removeIndex to List$insertListId:$insertIndex');
       lists[insertListId]?.insert(insertIndex, item);
     }
+
+    removeItem = null;
+    insertItem = null;
+    phantomItem = null;
   }
 
   @override
@@ -133,10 +162,10 @@ class Board extends StatelessWidget {
             builder: builder,
             listData: listData,
             scrollController: ScrollController(),
-            onWillDeleted: (listId, index) {
+            onDeleted: (listId, index) {
               boardData.markDelete(listId, index);
             },
-            onWillInserted: (listId, index) {
+            onInserted: (listId, index) {
               boardData.markInsert(listId, index);
             },
             onReorder: (_, int fromIndex, int toIndex) {
@@ -144,6 +173,9 @@ class Board extends StatelessWidget {
             },
             onDragEnded: (_) {
               boardData.swapListDataIfNeed();
+            },
+            onWillInserted: (listId, insertedIndex, item) {
+              boardData.insertPhantom(listId, insertedIndex, item);
             },
           );
         },

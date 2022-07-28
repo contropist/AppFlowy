@@ -54,4 +54,7 @@ class TextItem extends BoardListItem {
   final String s;
 
   TextItem(this.s);
+
+  @override
+  String get id => throw UnimplementedError();
 }
