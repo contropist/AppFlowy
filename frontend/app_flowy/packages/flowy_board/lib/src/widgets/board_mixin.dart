@@ -36,24 +36,24 @@ mixin BoardMixin {
   @protected
   Widget makeDisappearingWidget(
     Widget child,
-    AnimationController ghostController,
+    AnimationController phantomController,
     Size? draggingFeedbackSize,
     Axis direction,
   ) {
     if (null == draggingFeedbackSize) {
       return SizeTransitionWithIntrinsicSize(
-        sizeFactor: ghostController,
+        sizeFactor: phantomController,
         axis: direction,
         child: FadeTransition(
-          opacity: ghostController,
+          opacity: phantomController,
           child: child,
         ),
       );
     } else {
       var transition = SizeTransition(
-        sizeFactor: ghostController,
+        sizeFactor: phantomController,
         axis: direction,
-        child: FadeTransition(opacity: ghostController, child: child),
+        child: FadeTransition(opacity: phantomController, child: child),
       );
 
       BoxConstraints contentSizeConstraints =

@@ -9,51 +9,49 @@ class SingleBoardListExample extends StatefulWidget {
 }
 
 class _SingleBoardListExampleState extends State<SingleBoardListExample> {
-  var rows = ["1", "2", "3", "4", "5"];
+  final BoardData boardData = BoardData();
+
+  @override
+  void initState() {
+    final boardList1 = BoardListData(id: "1", items: [
+      TextItem("a"),
+      TextItem("b"),
+      TextItem("c"),
+      TextItem("d"),
+    ]);
+
+    boardData.lists[boardList1.id] = boardList1;
+    super.initState();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final children = rows.map((row) {
-      return _RowWidget(text: row, key: ObjectKey(row));
-    }).toList();
-
-    return BoardList(
-      children: children,
-      onDragStarted: (list, index) {
-        debugPrint("[drag] $index");
-      },
-      onReorder: (from, to) {
-        debugPrint("[drag] from:$from to:$to");
-        setState(() {
-          final row = rows.removeAt(from);
-          rows.insert(to, row);
-        });
-      },
-      onDragEnded: (_) {
-        debugPrint("[drag] end");
-      },
-      onDeleted: (int deletedIndex) {
-        throw UnimplementedError;
-      },
-      onInserted: (int insertedIndex, BoardListItem newItem) {
-        throw UnimplementedError;
+    return Board(
+      boardData: boardData,
+      builder: (context, item) {
+        return _RowWidget(item: item as TextItem, key: ObjectKey(item));
       },
     );
   }
 }
 
 class _RowWidget extends StatelessWidget {
-  final String text;
-  const _RowWidget({Key? key, required this.text}) : super(key: key);
+  final TextItem item;
+  const _RowWidget({Key? key, required this.item}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      key: ObjectKey(text),
-      width: double.infinity,
+      key: ObjectKey(item),
       height: 60,
       color: Colors.green,
-      child: Center(child: Text(text)),
+      child: Center(child: Text(item.s)),
     );
   }
+}
+
+class TextItem extends BoardListItem {
+  final String s;
+
+  TextItem(this.s);
 }

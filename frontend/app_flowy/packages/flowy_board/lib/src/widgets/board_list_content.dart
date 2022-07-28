@@ -3,6 +3,8 @@ part of 'board_list.dart';
 typedef OnContentDragStarted = void Function(int index);
 typedef OnContentDragEnded = void Function();
 typedef OnContentReorder = void Function(int fromIndex, int toIndex);
+typedef OnContentDeleted = void Function(int deletedIndex);
+typedef OnContentInserted = void Function(int insertedIndex);
 
 class BoardListContentWidget extends StatefulWidget {
   final Widget? header;
@@ -13,8 +15,8 @@ class BoardListContentWidget extends StatefulWidget {
   final OnContentDragStarted? onDragStarted;
   final OnContentReorder onReorder;
   final OnContentDragEnded? onDragEnded;
-  final OnDeleted onDeleted;
-  final OnInserted onInserted;
+  final OnContentDeleted onWillDeleted;
+  final OnContentInserted onWillInserted;
   final EdgeInsets? padding;
   final Axis direction = Axis.vertical;
   final MainAxisAlignment mainAxisAlignment = MainAxisAlignment.start;
@@ -29,8 +31,8 @@ class BoardListContentWidget extends StatefulWidget {
     this.onDragStarted,
     required this.onReorder,
     this.onDragEnded,
-    required this.onDeleted,
-    required this.onInserted,
+    required this.onWillDeleted,
+    required this.onWillInserted,
     // ignore: unused_element
     this.padding,
   }) : super(key: key);
@@ -48,11 +50,11 @@ class BoardListContentWidgetState extends State<BoardListContentWidget>
   bool _scrolling = false;
 
   late DragAnimationController _animationController;
-  late DragState _dragState;
+  late DraggingState _dragState;
 
   @override
   void initState() {
-    _dragState = DragState();
+    _dragState = DraggingState();
     _animationController = DragAnimationController(
       reorderAnimationDuration: widget.config.reorderAnimationDuration,
       scrollAnimationDuration: widget.config.scrollAnimationDuration,
@@ -131,7 +133,7 @@ class BoardListContentWidgetState extends State<BoardListContentWidget>
     /// when the animation finishs.
 
     if (_animationController.isEntranceAnimationCompleted) {
-      _dragState.endGhosting();
+      _dragState.removePhantom();
 
       if (!isAcceptingNewTarget && _dragState.didDragTargetMoveToNext()) {
         return;
@@ -149,15 +151,14 @@ class BoardListContentWidgetState extends State<BoardListContentWidget>
       final dragTarget = _buildDragTarget(context, child, childIndex);
       int shiftedIndex = childIndex;
 
-      /// Calculate the shiftedIndex if it's ghosting
-      if (_dragState.isGhosting()) {
+      if (_dragState.isOverlapWithPhantom()) {
         shiftedIndex = _dragState.calculateShiftedIndex(childIndex);
       }
 
       final currentIndex = _dragState.currentIndex;
-      final ghostIndex = _dragState.ghostIndex;
+      final phantomIndex = _dragState.phantomIndex;
 
-      if (shiftedIndex == currentIndex || childIndex == ghostIndex) {
+      if (shiftedIndex == currentIndex || childIndex == phantomIndex) {
         Widget dragSpace = _dragState.draggingWidget == null
             ? SizedBox.fromSize(size: _dragState.dropAreaSize)
             : Opacity(
@@ -171,7 +172,7 @@ class BoardListContentWidgetState extends State<BoardListContentWidget>
         /// The dragTarget size will become zero if it start dragging. Check the
         /// [BoardDragTarget] for more details.
         if (_dragState.isNotDragging()) {
-          debugPrint('index:$childIndex is not dragging');
+          Log.info('index:$childIndex is not dragging');
           return _buildDraggingContainer(children: [dragTarget]);
         }
 
@@ -179,15 +180,16 @@ class BoardListContentWidgetState extends State<BoardListContentWidget>
 
         final feedbackSize = _dragState.draggingFeedbackSize;
         Widget entranceSpacing = _makeAppearingWidget(dragSpace, feedbackSize);
-        Widget ghostSpacing = _makeDisappearingWidget(dragSpace, feedbackSize);
+        Widget phantomSpacing =
+            _makeDisappearingWidget(dragSpace, feedbackSize);
 
         ///
-        if (_dragState.isGhostAboveDragTarget()) {
-          //the ghost is moving down, i.e. the tile below the ghost is moving up
-          debugPrint('index:$childIndex item moving up / ghost moving down');
-          if (shiftedIndex == currentIndex && childIndex == ghostIndex) {
+        if (_dragState.isPhantomAboveDragTarget()) {
+          //the phantom is moving down, i.e. the tile below the phantom is moving up
+          Log.debug('index:$childIndex item moving up / phantom moving down');
+          if (shiftedIndex == currentIndex && childIndex == phantomIndex) {
             return _buildDraggingContainer(children: [
-              ghostSpacing,
+              phantomSpacing,
               dragTarget,
               entranceSpacing,
             ]);
@@ -196,38 +198,38 @@ class BoardListContentWidgetState extends State<BoardListContentWidget>
               dragTarget,
               entranceSpacing,
             ]);
-          } else if (childIndex == ghostIndex) {
+          } else if (childIndex == phantomIndex) {
             return _buildDraggingContainer(
                 children: shiftedIndex <= childIndex
-                    ? [dragTarget, ghostSpacing]
-                    : [ghostSpacing, dragTarget]);
+                    ? [dragTarget, phantomSpacing]
+                    : [phantomSpacing, dragTarget]);
           }
         }
 
         ///
-        if (_dragState.isGhostBelowDragTarget()) {
-          //the ghost is moving up, i.e. the tile above the ghost is moving down
-          debugPrint('index:$childIndex item moving down / ghost moving up');
-          if (shiftedIndex == currentIndex && childIndex == ghostIndex) {
+        if (_dragState.isPhantomBelowDragTarget()) {
+          //the phantom is moving up, i.e. the tile above the phantom is moving down
+          Log.debug('index:$childIndex item moving down / phantom moving up');
+          if (shiftedIndex == currentIndex && childIndex == phantomIndex) {
             return _buildDraggingContainer(children: [
               entranceSpacing,
               dragTarget,
-              ghostSpacing,
+              phantomSpacing,
             ]);
           } else if (shiftedIndex == currentIndex) {
             return _buildDraggingContainer(children: [
               entranceSpacing,
               dragTarget,
             ]);
-          } else if (childIndex == ghostIndex) {
+          } else if (childIndex == phantomIndex) {
             return _buildDraggingContainer(
                 children: shiftedIndex >= childIndex
-                    ? [ghostSpacing, dragTarget]
-                    : [dragTarget, ghostSpacing]);
+                    ? [phantomSpacing, dragTarget]
+                    : [dragTarget, phantomSpacing]);
           }
         }
 
-        assert(!_dragState.isGhosting());
+        assert(!_dragState.isOverlapWithPhantom());
 
         List<Widget> children = [];
         if (_dragState.isDragTargetMovingDown()) {
@@ -255,7 +257,7 @@ class BoardListContentWidgetState extends State<BoardListContentWidget>
   Widget _makeDisappearingWidget(Widget child, Size? feedbackSize) {
     return makeDisappearingWidget(
       child,
-      _animationController.ghostController,
+      _animationController.phantomController,
       feedbackSize,
       widget.direction,
     );
@@ -264,7 +266,11 @@ class BoardListContentWidgetState extends State<BoardListContentWidget>
   BoardDragTarget _buildDragTarget(
       BuildContext builderContext, Widget child, int childIndex) {
     return BoardDragTarget(
-      draggingData: DraggingData(dragIndex: childIndex, boardList: widget),
+      draggingData: DraggingData(
+        dragIndex: childIndex,
+        dragState: _dragState,
+        boardList: widget,
+      ),
       onDragStarted: (draggingWidget, draggingData, size) {
         setState(() {
           _dragState.startDragging(
@@ -283,45 +289,42 @@ class BoardListContentWidgetState extends State<BoardListContentWidget>
           widget.onDragEnded?.call();
         });
       },
-      onWillAccept: (DraggingData? draggingData) {
-        if (widget != draggingData?.boardList) {
-          return _onWillAcceptNewItem(builderContext, draggingData, childIndex);
+      onWillAccept: (DraggingData draggingData) {
+        var willAccept = true;
+        if (widget == draggingData.boardList) {
+          willAccept = _onWillAccept(builderContext, draggingData, childIndex);
         } else {
-          return _onWillAccept(builderContext, draggingData, childIndex);
+          Log.debug('Moving List${draggingData.boardList.key} item '
+              'from index ${draggingData.dragIndex} '
+              'to List${widget.key} index $childIndex');
+        }
+        return willAccept;
+      },
+      onAccept: (draggingData) {
+        if (widget != draggingData.boardList) {
+          draggingData.boardList.onWillDeleted(draggingData.dragIndex);
+          widget.onWillInserted(childIndex);
         }
       },
       child: child,
     );
   }
 
-  bool _onWillAcceptNewItem(
-      BuildContext context, DraggingData? draggingData, int childIndex) {
-    if (draggingData != null) {
-      debugPrint(
-          'move ${draggingData.boardList}:${draggingData.dragIndex} data to $widget:$childIndex');
-
-      // final item = draggingData.boardList.onDeleted(draggingData.dragIndex);
-      // widget.onInserted(childIndex, item);
-    }
-
-    return false;
-  }
-
   bool _onWillAccept(
-      BuildContext context, DraggingData? draggingData, int childIndex) {
+      BuildContext context, DraggingData? draggingData, int otherIndex) {
     /// The [willAccept] will be true if the dargTarget is the widget that gets
     /// dragged and it is dragged on top of the other dragTargets.
-    final toAcceptIndex = draggingData?.dragIndex;
-    bool willAccept = _dragState.dragStartIndex == toAcceptIndex &&
-        toAcceptIndex != childIndex;
+    final draggingIndex = draggingData?.dragIndex;
+    bool willAccept = _dragState.dragStartIndex == draggingIndex &&
+        draggingIndex != otherIndex;
 
-    debugPrint("$this: acceptIndex: $toAcceptIndex, childIndex: $childIndex");
+    // Log.info("$this: acceptIndex: $toAcceptIndex, childIndex: $childIndex");
     setState(() {
       if (willAccept) {
-        int shiftedIndex = _dragState.calculateShiftedIndex(childIndex);
+        int shiftedIndex = _dragState.calculateShiftedIndex(otherIndex);
         _dragState.updateNextIndex(shiftedIndex);
       } else {
-        _dragState.updateNextIndex(childIndex);
+        _dragState.updateNextIndex(otherIndex);
       }
 
       _requestAnimationToNextIndex(isAcceptingNewTarget: true);

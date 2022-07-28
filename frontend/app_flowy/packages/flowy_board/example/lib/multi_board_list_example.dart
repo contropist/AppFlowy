@@ -9,90 +9,37 @@ class MultiBoardListExample extends StatefulWidget {
 }
 
 class _MultiBoardListExampleState extends State<MultiBoardListExample> {
-  var items_1 = [
-    TextItem("1"),
-    TextItem("2"),
-    TextItem("3"),
-    TextItem("4"),
-    TextItem("5"),
-  ];
-  var items_2 = [
-    TextItem("a"),
-    TextItem("b"),
-    TextItem("c"),
-    TextItem("d"),
-    TextItem("e"),
-  ];
+  final BoardData boardData = BoardData();
+
+  @override
+  void initState() {
+    final boardList1 = BoardListData(id: "1", items: [
+      TextItem("a"),
+      TextItem("b"),
+      TextItem("c"),
+      TextItem("d"),
+    ]);
+    final boardList2 = BoardListData(id: "2", items: [
+      TextItem("1"),
+      TextItem("2"),
+      TextItem("3"),
+      TextItem("4"),
+      TextItem("5"),
+    ]);
+
+    boardData.lists[boardList1.id] = boardList1;
+    boardData.lists[boardList2.id] = boardList2;
+
+    super.initState();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      children: [
-        Expanded(child: _buildList1()),
-        const SizedBox(width: 30),
-        Expanded(child: _buildList2())
-      ],
-    );
-  }
-
-  Widget _buildList1() {
-    final children = items_1.map((item) {
-      return _RowWidget(item: item, key: ObjectKey(item));
-    }).toList();
-
-    return BoardList(
-      scrollController: ScrollController(),
-      onDeleted: (int deletedIndex) {
-        final removedItem = items_1.removeAt(deletedIndex);
-        setState(() {});
-        return removedItem;
+    return Board(
+      boardData: boardData,
+      builder: (context, item) {
+        return _RowWidget(item: item as TextItem, key: ObjectKey(item));
       },
-      onReorder: (from, to) {
-        setState(() {
-          final row = items_1.removeAt(from);
-          items_1.insert(to, row);
-        });
-      },
-      onInserted: (
-        int insertedIndex,
-        BoardListItem newItem,
-      ) {
-        setState(() {
-          items_1.insert(insertedIndex, newItem as TextItem);
-        });
-      },
-      children: children,
-    );
-  }
-
-  Widget _buildList2() {
-    final children = items_2.map((item) {
-      return _RowWidget(item: item, key: ObjectKey(item));
-    }).toList();
-
-    return BoardList(
-      scrollController: ScrollController(),
-      onDeleted: (int deletedIndex) {
-        final removedItem = items_2.removeAt(deletedIndex);
-        setState(() {});
-        return removedItem;
-      },
-      onReorder: (from, to) {
-        setState(() {
-          final row = items_2.removeAt(from);
-          items_2.insert(to, row);
-        });
-      },
-      onInserted: (
-        int insertedIndex,
-        BoardListItem newItem,
-      ) {
-        setState(() {
-          items_2.insert(insertedIndex, newItem as TextItem);
-        });
-      },
-      children: children,
     );
   }
 }

@@ -23,7 +23,7 @@ class BoardDragTarget extends StatefulWidget {
   ///
   /// [toAccept] represents the dragTarget index, which is the value passed in
   /// when creating the [BoardDragTarget].
-  final bool Function(DraggingData? toAccept) onWillAccept;
+  final bool Function(DraggingData toAccept) onWillAccept;
 
   /// Called when an acceptable piece of data was dropped over this drag target.
   ///
@@ -58,7 +58,11 @@ class _BoardDragTargetState extends State<BoardDragTarget> {
   Widget build(BuildContext context) {
     Widget dragTarget = DragTarget<DraggingData>(
       builder: _buildDraggableWidget,
-      onWillAccept: widget.onWillAccept,
+      onWillAccept: (draggingData) {
+        assert(draggingData != null);
+        if (draggingData == null) return false;
+        return widget.onWillAccept(draggingData);
+      },
       onAccept: widget.onAccept,
       onLeave: widget.onLeave,
     );
@@ -100,7 +104,9 @@ class _BoardDragTargetState extends State<BoardDragTarget> {
       dragAnchorStrategy: childDragAnchorStrategy,
       // When the drag ends inside a DragTarget widget, the drag
       // succeeds, and we reorder the widget into position appropriately.
-      onDragCompleted: widget.onDragEnded,
+      onDragCompleted: () {
+        widget.onDragEnded();
+      },
       // When the drag does not end inside a DragTarget widget, the
       // drag fails, but we still reorder the widget to the last position it
       // had been dragged to.
@@ -146,9 +152,9 @@ class DragAnimationController {
   // This controls the entrance of the dragging widget into a new place.
   late AnimationController entranceController;
 
-  // This controls the 'ghost' of the dragging widget, which is left behind
+  // This controls the 'phantom' of the dragging widget, which is left behind
   // where the widget used to be.
-  late AnimationController ghostController;
+  late AnimationController phantomController;
 
   DragAnimationController({
     required this.reorderAnimationDuration,
@@ -158,7 +164,7 @@ class DragAnimationController {
   }) {
     entranceController = AnimationController(
         value: 1.0, vsync: vsync, duration: reorderAnimationDuration);
-    ghostController = AnimationController(
+    phantomController = AnimationController(
         value: 0, vsync: vsync, duration: reorderAnimationDuration);
     entranceController.addStatusListener(entranceAnimateStatusChanged);
   }
@@ -170,47 +176,47 @@ class DragAnimationController {
   }
 
   void animateToNext() {
-    ghostController.reverse(from: 1.0);
+    phantomController.reverse(from: 1.0);
     entranceController.forward(from: 0.0);
   }
 
   void performReorderAnimation() {
-    ghostController.reverse(from: 0.1);
+    phantomController.reverse(from: 0.1);
     entranceController.reverse(from: 0.0);
   }
 
   void dispose() {
     entranceController.dispose();
-    ghostController.dispose();
+    phantomController.dispose();
   }
 }
 
-class DragState {
-  // The member of widget.children currently being dragged.
-  //
-  // Null if no drag is underway.
+class DraggingState {
+  /// The member of widget.children currently being dragged.
+  ///
+  /// Null if no drag is underway.
   Widget? draggingWidget;
 
-  // The last computed size of the feedback widget being dragged.
+  /// The last computed size of the feedback widget being dragged.
   Size? draggingFeedbackSize = Size.zero;
 
-  // The location that the dragging widget occupied before it started to drag.
+  /// The location that the dragging widget occupied before it started to drag.
   int dragStartIndex = -1;
 
-  // The index that the dragging widget most recently left.
-  // This is used to show an animation of the widget's position.
-  int ghostIndex = -1;
+  /// The index that the dragging widget most recently left.
+  /// This is used to show an animation of the widget's position.
+  int phantomIndex = -1;
 
-  // The index that the dragging widget currently occupies.
+  /// The index that the dragging widget currently occupies.
   int currentIndex = -1;
 
-  // The widget to move the dragging widget too after the current index.
+  /// The widget to move the dragging widget too after the current index.
   int nextIndex = 0;
 
-  // Whether or not we are currently scrolling this view to show a widget.
+  /// Whether or not we are currently scrolling this view to show a widget.
   bool scrolling = false;
 
-  // The additional margin to place around a computed drop area.
+  /// The additional margin to place around a computed drop area.
   static const double _dropAreaMargin = 0.0;
 
   Size get dropAreaSize {
@@ -224,7 +230,7 @@ class DragState {
   void startDragging(Widget draggingWidget, int draggingWidgetIndex,
       Size? draggingWidgetSize) {
     this.draggingWidget = draggingWidget;
-    ghostIndex = draggingWidgetIndex;
+    phantomIndex = draggingWidgetIndex;
     dragStartIndex = draggingWidgetIndex;
     currentIndex = draggingWidgetIndex;
     draggingFeedbackSize = draggingWidgetSize;
@@ -232,28 +238,28 @@ class DragState {
 
   void endDragging() {
     dragStartIndex = -1;
-    ghostIndex = -1;
+    phantomIndex = -1;
     currentIndex = -1;
     draggingWidget = null;
   }
 
-  /// When the ghostIndex and currentIndex are the same, it means the dragging
+  /// When the phantomIndex and currentIndex are the same, it means the dragging
   /// widget did move to the destination location.
-  void endGhosting() {
-    ghostIndex = currentIndex;
+  void removePhantom() {
+    phantomIndex = currentIndex;
   }
 
-  /// The dragging widget overlaps with the ghost widget.
-  bool isGhosting() {
-    return currentIndex != ghostIndex;
+  /// The dragging widget overlaps with the phantom widget.
+  bool isOverlapWithPhantom() {
+    return currentIndex != phantomIndex;
   }
 
-  bool isGhostAboveDragTarget() {
-    return currentIndex > ghostIndex;
+  bool isPhantomAboveDragTarget() {
+    return currentIndex > phantomIndex;
   }
 
-  bool isGhostBelowDragTarget() {
-    return currentIndex < ghostIndex;
+  bool isPhantomBelowDragTarget() {
+    return currentIndex < phantomIndex;
   }
 
   bool didDragTargetMoveToNext() {
@@ -285,12 +291,12 @@ class DragState {
   int calculateShiftedIndex(int index) {
     int shiftedIndex = index;
     if (index == dragStartIndex) {
-      shiftedIndex = ghostIndex;
-    } else if (index > dragStartIndex && index <= ghostIndex) {
-      /// ghost move up
+      shiftedIndex = phantomIndex;
+    } else if (index > dragStartIndex && index <= phantomIndex) {
+      /// phantom move up
       shiftedIndex--;
-    } else if (index < dragStartIndex && index >= ghostIndex) {
-      /// ghost move down
+    } else if (index < dragStartIndex && index >= phantomIndex) {
+      /// phantom move down
       shiftedIndex++;
     }
     return shiftedIndex;
@@ -303,11 +309,14 @@ class DraggingData {
   /// The index of the dragging target in the boardList.
   final int dragIndex;
 
+  final DraggingState dragState;
+
   /// Indicate the dargging come from which [BoardListContentWidget].
   final BoardListContentWidget boardList;
 
   const DraggingData({
     required this.dragIndex,
+    required this.dragState,
     required this.boardList,
   });
 }
