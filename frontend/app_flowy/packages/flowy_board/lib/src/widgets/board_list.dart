@@ -1,3 +1,4 @@
+import 'package:flowy_board/flowy_board.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:equatable/equatable.dart';
@@ -14,12 +15,14 @@ typedef OnDragEnded = void Function(String listId);
 typedef OnReorder = void Function(String listId, int fromIndex, int toIndex);
 typedef OnDeleted = void Function(String listId, int deletedIndex);
 typedef OnInserted = void Function(String listId, int insertedIndex);
-typedef OnWillInsert = void Function(
-    String listId, int insertedIndex, BoardListItem item);
+typedef OnWillInsert = void Function(String listId, int insertedIndex,
+    BoardListItem item, Widget? draggingWidget);
 
 class BoardListData extends ChangeNotifier with EquatableMixin {
   final String id;
+
   final List<BoardListItem> _items;
+  List<BoardListItem> get items => _items;
 
   BoardListData({
     required this.id,
@@ -50,24 +53,30 @@ class BoardListData extends ChangeNotifier with EquatableMixin {
     notifyListeners();
   }
 
-  void insertPhantom(int insertedIndex, BoardListPhantomItem phantomItem) {
+  /// Insert the [phantom] at [insertedIndex] and remove the existing [phantom]
+  /// if it exists.
+  void insertPhantom(
+      int insertedIndex, BoardListItem listItem, Widget? draggingWidget) {
     final index = _items.indexWhere((item) => item.isPhantom);
     if (index != -1) {
       if (index != insertedIndex) {
         Log.debug(
             '[phantom] Move phantom from $id:$index to $id:$insertedIndex');
-        move(index, insertedIndex);
+
+        _items.removeAt(index);
+        _items.insert(insertedIndex, BoardListPhantomItem(listItem));
+        notifyListeners();
       }
     } else {
       Log.debug('[phantom] insert phantom at $id:$insertedIndex');
-      insert(insertedIndex, phantomItem);
+      insert(insertedIndex, BoardListPhantomItem(listItem));
     }
   }
 
   void removePhantom() {
     final index = _items.indexWhere((item) => item.isPhantom);
     if (index != -1) {
-      Log.debug('[phantom] Remove phantom at $id:$index to');
+      Log.debug('[phantom] Remove phantom at $id:$index');
       removeAt(index);
     }
   }
@@ -82,14 +91,17 @@ class BoardListConfig {
 }
 
 abstract class BoardListItem {
-  bool get isPhantom => false;
   String get id;
+
+  bool get isPhantom => false;
 }
 
-class BoardListPhantomItem implements BoardListItem {
+class BoardListPhantomItem extends BoardListItem {
   final BoardListItem inner;
 
-  BoardListPhantomItem(this.inner);
+  BoardListPhantomItem(
+    this.inner,
+  );
 
   @override
   bool get isPhantom => true;
@@ -154,7 +166,6 @@ class _BoardListState extends State<BoardList> {
               return widget.builder(context, item);
             }
           }).toList();
-          Log.debug('${widget.listId} has ${children.length} children');
 
           return BoardListContentWidget(
             key: widget.key,
@@ -177,10 +188,15 @@ class _BoardListState extends State<BoardList> {
             onInserted: (insertedIndex) {
               widget.onInserted(widget.listId, insertedIndex);
             },
-            onWillInserted: (insertedIndex, item) {
-              widget.onWillInserted(widget.listId, insertedIndex, item);
+            onWillInserted: (insertedIndex, item, draggingWidget) {
+              widget.onWillInserted(
+                widget.listId,
+                insertedIndex,
+                item,
+                draggingWidget,
+              );
             },
-            items: widget.listData._items,
+            listData: widget.listData,
             children: children,
           );
         },

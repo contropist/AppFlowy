@@ -19,4 +19,10 @@ class Log {
       debugPrint(message);
     }
   }
+
+  static void trace(String? message) {
+    if (enableLog) {
+      // debugPrint(message);
+    }
+  }
 }

@@ -6,12 +6,12 @@ typedef OnContentReorder = void Function(int fromIndex, int toIndex);
 typedef OnContentDeleted = void Function(int deletedIndex);
 typedef OnContentInserted = void Function(int insertedIndex);
 typedef OnContentWillInserted = void Function(
-    int insertedIndex, BoardListItem item);
+    int insertedIndex, BoardListItem item, Widget? draggingWidget);
 
 class BoardListContentWidget extends StatefulWidget {
   final Widget? header;
   final Widget? footer;
-  final List<BoardListItem> items;
+  final BoardListData listData;
   final List<Widget> children;
   final ScrollController? scrollController;
   final BoardListConfig config;
@@ -29,7 +29,7 @@ class BoardListContentWidget extends StatefulWidget {
     Key? key,
     this.header,
     this.footer,
-    required this.items,
+    required this.listData,
     required this.children,
     this.scrollController,
     required this.config,
@@ -57,6 +57,8 @@ class BoardListContentWidgetState extends State<BoardListContentWidget>
 
   late DragAnimationController _animationController;
   late DraggingState _dragState;
+
+  BoardListContentWidget get currentBoardList => widget;
 
   @override
   void initState() {
@@ -167,10 +169,9 @@ class BoardListContentWidgetState extends State<BoardListContentWidget>
       if (shiftedIndex == currentIndex || childIndex == phantomIndex) {
         Widget dragSpace = _dragState.draggingWidget == null
             ? SizedBox.fromSize(size: _dragState.dropAreaSize)
-            : Opacity(
+            : PhantomWidget(
                 opacity: widget.config.draggingWidgetOpacity,
-                child: _dragState.draggingWidget,
-              );
+                child: _dragState.draggingWidget);
 
         /// Return the dragTarget it is not start dragging. The size of the
         /// dragTarget will be the same as the child in the column/row.
@@ -178,7 +179,6 @@ class BoardListContentWidgetState extends State<BoardListContentWidget>
         /// The dragTarget size will become zero if it start dragging. Check the
         /// [BoardDragTarget] for more details.
         if (_dragState.isNotDragging()) {
-          Log.info('index:$childIndex is not dragging');
           return _buildDraggingContainer(children: [dragTarget]);
         }
 
@@ -192,7 +192,7 @@ class BoardListContentWidgetState extends State<BoardListContentWidget>
         ///
         if (_dragState.isPhantomAboveDragTarget()) {
           //the phantom is moving down, i.e. the tile below the phantom is moving up
-          Log.debug('index:$childIndex item moving up / phantom moving down');
+          Log.trace('index:$childIndex item moving up / phantom moving down');
           if (shiftedIndex == currentIndex && childIndex == phantomIndex) {
             return _buildDraggingContainer(children: [
               phantomSpacing,
@@ -215,7 +215,7 @@ class BoardListContentWidgetState extends State<BoardListContentWidget>
         ///
         if (_dragState.isPhantomBelowDragTarget()) {
           //the phantom is moving up, i.e. the tile above the phantom is moving down
-          Log.debug('index:$childIndex item moving down / phantom moving up');
+          Log.trace('index:$childIndex item moving down / phantom moving up');
           if (shiftedIndex == currentIndex && childIndex == phantomIndex) {
             return _buildDraggingContainer(children: [
               entranceSpacing,
@@ -296,49 +296,63 @@ class BoardListContentWidgetState extends State<BoardListContentWidget>
         });
       },
       onWillAccept: (DraggingData draggingData) {
+        Log.trace('${widget.listData.id} on will accept');
+
+        assert(widget.listData.items.length > childIndex);
         var willAccept = true;
-        if (widget == draggingData.boardList) {
-          /// The dragTarget is dragging to the top of the original list.
-          willAccept = _onWillAccept(builderContext, draggingData, childIndex);
-        } else {
-          Log.debug('Moving List${draggingData.boardList.key} item '
-              'from index ${draggingData.dragIndex} '
-              'to List${widget.key} index $childIndex');
+
+        /// If the currentBoardList equal to the draggingData's boardList,
+        /// it means the dragTarget is dragging on the top of its own list.
+        /// Otherwise, it means the dargTarget was moved to another list.
+        ///
+        if (currentBoardList != draggingData.boardList) {
+          Log.debug(
+              'Try move List${draggingData.listId}:${draggingData.dragIndex} '
+              'to List${widget.listData.id}:$childIndex');
 
           /// The childIndex must be less than the current list length.
-          assert(widget.items.length > childIndex);
-          if (widget.items.length > childIndex) {
-            widget.onWillInserted(childIndex, draggingData.dragData);
+          if (widget.listData.items.length > childIndex) {
+            widget.onWillInserted(
+              childIndex,
+              draggingData.dragData,
+              draggingData.dragState.draggingWidget,
+            );
           }
+        } else {
+          willAccept = _onWillAccept(builderContext, draggingData, childIndex);
         }
         return willAccept;
       },
       onAccept: (draggingData) {
-        if (widget != draggingData.boardList) {
+        Log.trace('${widget.listData.id} on accept');
+        if (currentBoardList != draggingData.boardList) {
           /// The dragTarget was moved to another list.
           draggingData.boardList.onDeleted(draggingData.dragIndex);
           widget.onInserted(childIndex);
         }
+      },
+      onLeave: (draggingData) {
+        Log.trace('${widget.listData.id} on leave');
       },
       child: child,
     );
   }
 
   bool _onWillAccept(
-      BuildContext context, DraggingData? draggingData, int otherIndex) {
+      BuildContext context, DraggingData? draggingData, int childIndex) {
     /// The [willAccept] will be true if the dargTarget is the widget that gets
     /// dragged and it is dragged on top of the other dragTargets.
     final draggingIndex = draggingData?.dragIndex;
     bool willAccept = _dragState.dragStartIndex == draggingIndex &&
-        draggingIndex != otherIndex;
+        draggingIndex != childIndex;
 
     // Log.info("$this: acceptIndex: $toAcceptIndex, childIndex: $childIndex");
     setState(() {
       if (willAccept) {
-        int shiftedIndex = _dragState.calculateShiftedIndex(otherIndex);
+        int shiftedIndex = _dragState.calculateShiftedIndex(childIndex);
         _dragState.updateNextIndex(shiftedIndex);
       } else {
-        _dragState.updateNextIndex(otherIndex);
+        _dragState.updateNextIndex(childIndex);
       }
 
       _requestAnimationToNextIndex(isAcceptingNewTarget: true);

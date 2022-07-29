@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../flowy_board.dart';
+import '../utils/log.dart';
 
 /// [BoardDragTarget] is a [DragTarget] that carries the index information of
 /// the child.
@@ -32,7 +33,7 @@ class BoardDragTarget extends StatefulWidget {
 
   /// Called when a given piece of data being dragged over this target leaves
   /// the target.
-  final void Function(DraggingData?)? onLeave;
+  final void Function(DraggingData)? onLeave;
 
   BoardDragTarget({
     Key? key,
@@ -64,7 +65,12 @@ class _BoardDragTargetState extends State<BoardDragTarget> {
         return widget.onWillAccept(draggingData);
       },
       onAccept: widget.onAccept,
-      onLeave: widget.onLeave,
+      onLeave: (draggingData) {
+        assert(draggingData != null);
+        if (draggingData != null) {
+          widget.onLeave?.call(draggingData);
+        }
+      },
     );
 
     dragTarget = KeyedSubtree(key: widget._indexGlobalKey, child: dragTarget);
@@ -82,7 +88,6 @@ class _BoardDragTargetState extends State<BoardDragTarget> {
       return _buildDraggableFeedback(
         context,
         contentSizeConstraints,
-        // Container(color: Colors.red, width: 100, height: 50),
         widget.child,
       );
     });
@@ -191,14 +196,36 @@ class DragAnimationController {
   }
 }
 
+class PhantomWidget extends StatelessWidget {
+  final Widget? child;
+  final double opacity;
+  const PhantomWidget({
+    this.child,
+    required this.opacity,
+    Key? key,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Opacity(
+      opacity: opacity,
+      child: child,
+    );
+  }
+}
+
 class DraggingState {
   /// The member of widget.children currently being dragged.
   ///
   /// Null if no drag is underway.
-  Widget? draggingWidget;
+  Widget? _draggingWidget;
+
+  Widget? get draggingWidget => _draggingWidget;
 
   /// The last computed size of the feedback widget being dragged.
-  Size? draggingFeedbackSize = Size.zero;
+  Size? _draggingFeedbackSize = Size.zero;
+
+  Size? get draggingFeedbackSize => _draggingFeedbackSize;
 
   /// The location that the dragging widget occupied before it started to drag.
   int dragStartIndex = -1;
@@ -220,27 +247,28 @@ class DraggingState {
   static const double _dropAreaMargin = 0.0;
 
   Size get dropAreaSize {
-    if (draggingFeedbackSize == null) {
+    if (_draggingFeedbackSize == null) {
       return Size.zero;
     }
-    return draggingFeedbackSize! +
+    return _draggingFeedbackSize! +
         const Offset(_dropAreaMargin, _dropAreaMargin);
   }
 
   void startDragging(Widget draggingWidget, int draggingWidgetIndex,
       Size? draggingWidgetSize) {
-    this.draggingWidget = draggingWidget;
+    ///
+    _draggingWidget = draggingWidget;
     phantomIndex = draggingWidgetIndex;
     dragStartIndex = draggingWidgetIndex;
     currentIndex = draggingWidgetIndex;
-    draggingFeedbackSize = draggingWidgetSize;
+    _draggingFeedbackSize = draggingWidgetSize;
   }
 
   void endDragging() {
     dragStartIndex = -1;
     phantomIndex = -1;
     currentIndex = -1;
-    draggingWidget = null;
+    _draggingWidget = null;
   }
 
   /// When the phantomIndex and currentIndex are the same, it means the dragging
@@ -314,9 +342,11 @@ class DraggingData {
   /// Indicate the dargging come from which [BoardListContentWidget].
   final BoardListContentWidget boardList;
 
-  BoardListItem get dragData => boardList.items[dragIndex];
+  BoardListItem get dragData => boardList.listData.items[dragIndex];
 
-  const DraggingData({
+  String get listId => boardList.listData.id;
+
+  DraggingData({
     required this.dragIndex,
     required this.dragState,
     required this.boardList,

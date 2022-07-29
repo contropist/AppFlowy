@@ -14,7 +14,7 @@ class DraggingItem {
 
 class PhantomItem {
   final String listId;
-  final BoardListPhantomItem item;
+  final BoardListItem item;
 
   PhantomItem(this.listId, this.item);
 }
@@ -37,7 +37,7 @@ class BoardData extends ChangeNotifier with EquatableMixin {
       return;
     }
 
-    Log.info('Will remove $listId:$index');
+    Log.info('Mark $listId:$index as deletable');
     removeItem = DraggingItem(listId, index);
   }
 
@@ -47,23 +47,42 @@ class BoardData extends ChangeNotifier with EquatableMixin {
       return;
     }
 
-    Log.info('Will insert $listId:$index');
+    Log.info('Mark $listId:$index as insertable');
     insertItem = DraggingItem(listId, index);
   }
 
-  void insertPhantom(String listId, int insertedIndex, BoardListItem item) {
-    Log.debug('[phantom] Try insert phantom  $listId:$insertedIndex');
-    final boardListItem = BoardListPhantomItem(item);
+  /// Insert the [phantom] to list with [listId] and remove the [phantom]
+  /// from the others which [listId] is not equal to the [listId].
+  ///
+  void insertPhantom(
+    String listId,
+    int insertedIndex,
+    BoardListItem boardListItem,
+    Widget? draggingWidget,
+  ) {
     if (phantomItem != null) {
       if (phantomItem!.listId != listId) {
+        /// Remove the phanotm from the old list
         lists[phantomItem!.listId]?.removePhantom();
       } else {
-        lists[phantomItem!.listId]?.insertPhantom(insertedIndex, boardListItem);
+        /// Update the existing phantom index
+        lists[phantomItem!.listId]
+            ?.insertPhantom(insertedIndex, boardListItem, draggingWidget);
       }
     } else {
+      /// Insert new phantom to list
       phantomItem = PhantomItem(listId, boardListItem);
-      lists[listId]?.insertPhantom(insertedIndex, boardListItem);
+      lists[listId]
+          ?.insertPhantom(insertedIndex, boardListItem, draggingWidget);
     }
+  }
+
+  void removePhantom() {
+    if (phantomItem != null) {
+      lists[phantomItem!.listId]?.removePhantom();
+    }
+
+    phantomItem = null;
   }
 
   void swapListDataIfNeed() {
@@ -79,10 +98,6 @@ class BoardData extends ChangeNotifier with EquatableMixin {
     final item = lists[removeListId]?.removeAt(removeIndex);
     assert(item != null);
 
-    if (phantomItem != null) {
-      lists[phantomItem!.listId]?.removePhantom();
-    }
-
     if (item != null) {
       Log.info(
           'Did move item from List$removeListId:$removeIndex to List$insertListId:$insertIndex');
@@ -91,7 +106,6 @@ class BoardData extends ChangeNotifier with EquatableMixin {
 
     removeItem = null;
     insertItem = null;
-    phantomItem = null;
   }
 
   @override
@@ -172,10 +186,16 @@ class Board extends StatelessWidget {
               listData.move(fromIndex, toIndex);
             },
             onDragEnded: (_) {
+              boardData.removePhantom();
               boardData.swapListDataIfNeed();
             },
-            onWillInserted: (listId, insertedIndex, item) {
-              boardData.insertPhantom(listId, insertedIndex, item);
+            onWillInserted: (listId, insertedIndex, item, draggingWidget) {
+              boardData.insertPhantom(
+                listId,
+                insertedIndex,
+                item,
+                draggingWidget,
+              );
             },
           );
         },
