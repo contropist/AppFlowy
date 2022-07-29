@@ -51,7 +51,7 @@ class BoardData extends ChangeNotifier with EquatableMixin {
     insertItem = DraggingItem(listId, index);
   }
 
-  /// Insert the [phantom] to list with [listId] and remove the [phantom]
+  /// Insert the [Phantom] to list with [listId] and remove the [Phantom]
   /// from the others which [listId] is not equal to the [listId].
   ///
   void insertPhantom(

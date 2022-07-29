@@ -185,7 +185,7 @@ class DragAnimationController {
     entranceController.forward(from: 0.0);
   }
 
-  void performReorderAnimation() {
+  void reverseAnimation() {
     phantomController.reverse(from: 0.1);
     entranceController.reverse(from: 0.0);
   }
@@ -351,4 +351,68 @@ class DraggingData {
     required this.dragState,
     required this.boardList,
   });
+}
+
+class PhantomData {
+  int _insertedIndex = -1;
+
+  int get insertedIndex => _insertedIndex;
+
+  bool get hasInsert => _insertedIndex != -1;
+
+  set insertedIndex(int value) {
+    if (_insertedIndex != value) {
+      Log.trace('[$PhantomData] set insert index: $value');
+      _insertedIndex = value;
+    }
+  }
+
+  int _deletedIndex = -1;
+
+  bool get hasDelete => _deletedIndex != -1;
+
+  int get deletedIndex => _deletedIndex;
+
+  set deleteIndex(int value) {
+    if (_deletedIndex != value) {
+      Log.trace('[$PhantomData] set delete index: $value');
+      _deletedIndex = value;
+    }
+  }
+}
+
+class PhantomAnimateContorller {
+  // How long an animation to reorder an element in the list takes.
+  final Duration reorderAnimationDuration;
+  late AnimationController appearController;
+  late AnimationController disappearController;
+
+  PhantomAnimateContorller({
+    required TickerProvider vsync,
+    required this.reorderAnimationDuration,
+    required void Function(AnimationStatus) appearAnimateStatusChanged,
+  }) {
+    appearController = AnimationController(
+        value: 1.0, vsync: vsync, duration: reorderAnimationDuration);
+    disappearController = AnimationController(
+        value: 0, vsync: vsync, duration: reorderAnimationDuration);
+    appearController.addStatusListener(appearAnimateStatusChanged);
+  }
+
+  bool get isAppearAnimationCompleted => appearController.isCompleted;
+
+  void animateToNext() {
+    disappearController.reverse(from: 1.0);
+    appearController.forward(from: 0.0);
+  }
+
+  void performReorderAnimation() {
+    disappearController.reverse(from: 0.1);
+    appearController.reverse(from: 0.0);
+  }
+
+  void dispose() {
+    appearController.dispose();
+    disappearController.dispose();
+  }
 }
