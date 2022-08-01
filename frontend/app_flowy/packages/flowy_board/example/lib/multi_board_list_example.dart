@@ -13,13 +13,13 @@ class _MultiBoardListExampleState extends State<MultiBoardListExample> {
 
   @override
   void initState() {
-    final boardList1 = BoardColumnDataController(id: "1", items: [
+    final boardList1 = BoardColumnDataController(columnId: "1", items: [
       TextItem("a"),
       TextItem("b"),
       TextItem("c"),
       TextItem("d"),
     ]);
-    final boardList2 = BoardColumnDataController(id: "2", items: [
+    final boardList2 = BoardColumnDataController(columnId: "2", items: [
       TextItem("1"),
       TextItem("2"),
       TextItem("3"),
@@ -27,8 +27,8 @@ class _MultiBoardListExampleState extends State<MultiBoardListExample> {
       TextItem("5"),
     ]);
 
-    boardData.lists[boardList1.id] = boardList1;
-    boardData.lists[boardList2.id] = boardList2;
+    boardData.columns[boardList1.columnId] = boardList1;
+    boardData.columns[boardList2.columnId] = boardList2;
 
     super.initState();
   }
@@ -36,7 +36,7 @@ class _MultiBoardListExampleState extends State<MultiBoardListExample> {
   @override
   Widget build(BuildContext context) {
     return Board(
-      boardData: boardData,
+      dataController: boardData,
       builder: (context, item) {
         return _RowWidget(item: item as TextItem, key: ObjectKey(item));
       },
@@ -59,7 +59,7 @@ class _RowWidget extends StatelessWidget {
   }
 }
 
-class TextItem extends BoardColumnItem {
+class TextItem extends ColumnItem {
   final String s;
 
   TextItem(this.s);

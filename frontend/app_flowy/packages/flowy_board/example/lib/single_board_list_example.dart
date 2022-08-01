@@ -13,21 +13,21 @@ class _SingleBoardListExampleState extends State<SingleBoardListExample> {
 
   @override
   void initState() {
-    final boardList1 = BoardColumnDataController(id: "1", items: [
+    final boardList1 = BoardColumnDataController(columnId: "1", items: [
       TextItem("a"),
       TextItem("b"),
       TextItem("c"),
       TextItem("d"),
     ]);
 
-    boardData.lists[boardList1.id] = boardList1;
+    boardData.columns[boardList1.columnId] = boardList1;
     super.initState();
   }
 
   @override
   Widget build(BuildContext context) {
     return Board(
-      boardData: boardData,
+      dataController: boardData,
       builder: (context, item) {
         return _RowWidget(item: item as TextItem, key: ObjectKey(item));
       },
@@ -50,7 +50,7 @@ class _RowWidget extends StatelessWidget {
   }
 }
 
-class TextItem extends BoardColumnItem {
+class TextItem extends ColumnItem {
   final String s;
 
   TextItem(this.s);

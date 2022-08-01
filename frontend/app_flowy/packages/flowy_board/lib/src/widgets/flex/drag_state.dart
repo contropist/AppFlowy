@@ -1,58 +1,52 @@
 import 'package:flutter/material.dart';
 
+import '../../utils/log.dart';
 import 'drag_target.dart';
-import 'board_flex.dart';
+import 'reorder_flex.dart';
 
-/// [DraggingContext] is used to store the custom dragging data. It can be used to
+/// [FlexDragTargetData] is used to store the custom dragging data. It can be used to
 /// locate the index of the dragging widget in the [BoardList].
-class DraggingContext<I> extends DraggingData {
+class FlexDragTargetData extends DragTargetData {
   /// The index of the dragging target in the boardList.
   @override
   final int draggingIndex;
 
-  final DraggingContextState state;
+  final DraggingState state;
 
   Widget? get draggingWidget => state.draggingWidget;
 
   Size? get draggingFeedbackSize => state.feedbackSize;
 
-  /// Indicate the dargging come from which [BoardReorderFlex].
-  final DraggingColumn<I> boardList;
+  /// Indicate the dargging come from which [ReorderFlex].
+  final DraggingColumn<ReoderFlextItem> column;
 
-  I get bindData => boardList.itemAtIndex(draggingIndex);
+  ReoderFlextItem get columnItem => column.itemAtIndex(draggingIndex);
 
-  String get listId => boardList.listId;
+  String get columnId => column.id;
 
-  DraggingContext({
+  FlexDragTargetData({
     required this.draggingIndex,
     required this.state,
-    required this.boardList,
+    required this.column,
   });
 }
 
-abstract class DraggingContextState {
-  Widget? get draggingWidget;
-  Size? get feedbackSize;
-}
-
 abstract class DraggingColumn<I> {
-  String get listId;
+  String get id;
   I itemAtIndex(int index);
 }
 
-class DraggingState extends DraggingContextState {
+class DraggingState {
   /// The member of widget.children currently being dragged.
   ///
   /// Null if no drag is underway.
   Widget? _draggingWidget;
 
-  @override
   Widget? get draggingWidget => _draggingWidget;
 
   /// The last computed size of the feedback widget being dragged.
   Size? _draggingFeedbackSize = Size.zero;
 
-  @override
   Size? get feedbackSize => _draggingFeedbackSize;
 
   /// The location that the dragging widget occupied before it started to drag.
@@ -85,6 +79,8 @@ class DraggingState extends DraggingContextState {
   void startDragging(Widget draggingWidget, int draggingWidgetIndex,
       Size? draggingWidgetSize) {
     ///
+    assert(draggingWidgetIndex >= 0);
+
     _draggingWidget = draggingWidget;
     phantomIndex = draggingWidgetIndex;
     dragStartIndex = draggingWidgetIndex;
@@ -124,6 +120,7 @@ class DraggingState extends DraggingContextState {
 
   /// Set the currentIndex to nextIndex
   void moveDragTargetToNext() {
+    Log.debug('moveDragTargetToNext: $nextIndex');
     currentIndex = nextIndex;
   }
 
@@ -160,5 +157,10 @@ class DraggingState extends DraggingContextState {
       shiftedIndex++;
     }
     return shiftedIndex;
+  }
+
+  @override
+  String toString() {
+    return 'DragStartIndex: $dragStartIndex, PhantomIndex: $phantomIndex, CurrentIndex: $currentIndex, NextIndex: $nextIndex';
   }
 }

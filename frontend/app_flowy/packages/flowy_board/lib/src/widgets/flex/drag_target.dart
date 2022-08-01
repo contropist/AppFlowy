@@ -1,62 +1,75 @@
 import 'package:flutter/material.dart';
 
-import '../../../flowy_board.dart';
-import '../../utils/log.dart';
-
-abstract class DraggingData {
+abstract class DragTargetData {
   int get draggingIndex;
 }
 
-/// [BoardDragTarget] is a [DragTarget] that carries the index information of
+abstract class ReorderDraggableTargetBuilder {
+  Widget? build<T extends DragTargetData>(
+    BuildContext context,
+    Widget child,
+    DragTargetOnStarted onDragStarted,
+    DragTargetOnEnded<T> onDragEnded,
+  );
+}
+
+typedef DragTargetOnStarted = void Function(Widget, int, Size?);
+typedef DragTargetOnEnded<T extends DragTargetData> = void Function(
+    T dragTargetData);
+
+/// [ReorderDragTarget] is a [DragTarget] that carries the index information of
 /// the child.
 ///
-/// The size of the [BoardDragTarget] will become zero when it start dragging.
+/// The size of the [ReorderDragTarget] will become zero when it start dragging.
 ///
-class BoardDragTarget<T extends DraggingData> extends StatefulWidget {
+class ReorderDragTarget<T extends DragTargetData> extends StatefulWidget {
   final Widget child;
-  final T draggingData;
+  final T dragTargetData;
 
   final GlobalObjectKey _indexGlobalKey;
 
   /// Called when dragTarget is being dragging.
-  final void Function(Widget, int, Size?) onDragStarted;
+  final DragTargetOnStarted onDragStarted;
 
-  final void Function(T draggingData) onDragEnded;
+  final DragTargetOnEnded<T> onDragEnded;
 
   /// Called to determine whether this widget is interested in receiving a given
   /// piece of data being dragged over this drag target.
   ///
   /// [toAccept] represents the dragTarget index, which is the value passed in
-  /// when creating the [BoardDragTarget].
-  final bool Function(T draggingData) onWillAccept;
+  /// when creating the [ReorderDragTarget].
+  final bool Function(T dragTargetData) onWillAccept;
 
   /// Called when an acceptable piece of data was dropped over this drag target.
   ///
   /// Equivalent to [onAcceptWithDetails], but only includes the data.
-  final void Function(T draggingData)? onAccept;
+  final void Function(T dragTargetData)? onAccept;
 
   /// Called when a given piece of data being dragged over this target leaves
   /// the target.
-  final void Function(T draggingData)? onLeave;
+  final void Function(T dragTargetData)? onLeave;
 
-  BoardDragTarget({
+  final ReorderDraggableTargetBuilder? draggableTargetBuilder;
+
+  ReorderDragTarget({
     Key? key,
     required this.child,
-    required this.draggingData,
+    required this.dragTargetData,
     required this.onDragStarted,
     required this.onDragEnded,
     required this.onWillAccept,
     this.onAccept,
     this.onLeave,
+    this.draggableTargetBuilder,
   })  : _indexGlobalKey = GlobalObjectKey(child.key!),
         super(key: key);
 
   @override
-  State<BoardDragTarget<T>> createState() => _BoardDragTargetState<T>();
+  State<ReorderDragTarget<T>> createState() => _ReorderDragTargetState<T>();
 }
 
-class _BoardDragTargetState<T extends DraggingData>
-    extends State<BoardDragTarget<T>> {
+class _ReorderDragTargetState<T extends DragTargetData>
+    extends State<ReorderDragTarget<T>> {
   /// Return the dragTarget's size
   Size? _draggingFeedbackSize = Size.zero;
 
@@ -64,16 +77,16 @@ class _BoardDragTargetState<T extends DraggingData>
   Widget build(BuildContext context) {
     Widget dragTarget = DragTarget<T>(
       builder: _buildDraggableWidget,
-      onWillAccept: (draggingData) {
-        assert(draggingData != null);
-        if (draggingData == null) return false;
-        return widget.onWillAccept(draggingData);
+      onWillAccept: (dragTargetData) {
+        assert(dragTargetData != null);
+        if (dragTargetData == null) return false;
+        return widget.onWillAccept(dragTargetData);
       },
       onAccept: widget.onAccept,
-      onLeave: (draggingData) {
-        assert(draggingData != null);
-        if (draggingData != null) {
-          widget.onLeave?.call(draggingData);
+      onLeave: (dragTargetData) {
+        assert(dragTargetData != null);
+        if (dragTargetData != null) {
+          widget.onLeave?.call(dragTargetData);
         }
       },
     );
@@ -97,50 +110,43 @@ class _BoardDragTargetState<T extends DraggingData>
       );
     });
 
-    if (widget.child is PassedInPhantomWidget) {
-      final phantomWidget = widget.child as PassedInPhantomWidget;
-      phantomWidget.phantomContext.onInserted = () {
-        widget.onDragStarted(
+    final draggableWidget = widget.draggableTargetBuilder?.build(
+          context,
           widget.child,
-          phantomWidget.phantomContext.index,
-          phantomWidget.phantomContext.feedbackSize,
+          widget.onDragStarted,
+          widget.onDragEnded,
+        ) ??
+        LongPressDraggable<DragTargetData>(
+          maxSimultaneousDrags: 1,
+          data: widget.dragTargetData,
+          ignoringFeedbackSemantics: false,
+          feedback: feedbackBuilder,
+          childWhenDragging: IgnorePointerWidget(child: widget.child),
+          onDragStarted: () {
+            _draggingFeedbackSize = widget._indexGlobalKey.currentContext?.size;
+            widget.onDragStarted(
+              widget.child,
+              widget.dragTargetData.draggingIndex,
+              _draggingFeedbackSize,
+            );
+          },
+          dragAnchorStrategy: childDragAnchorStrategy,
+
+          /// When the drag ends inside a DragTarget widget, the drag
+          /// succeeds, and we reorder the widget into position appropriately.
+          onDragCompleted: () {
+            widget.onDragEnded(widget.dragTargetData);
+          },
+
+          /// When the drag does not end inside a DragTarget widget, the
+          /// drag fails, but we still reorder the widget to the last position it
+          /// had been dragged to.
+          onDraggableCanceled: (Velocity velocity, Offset offset) =>
+              widget.onDragEnded(widget.dragTargetData),
+          child: widget.child,
         );
-      };
 
-      phantomWidget.phantomContext.onDeleted = () {
-        widget.onDragEnded(phantomWidget.phantomContext.draggingContext as T);
-      };
-
-      return IgnorePointerWidget(child: widget.child);
-    } else {
-      return LongPressDraggable<DraggingData>(
-        maxSimultaneousDrags: 1,
-        data: widget.draggingData,
-        ignoringFeedbackSemantics: false,
-        feedback: feedbackBuilder,
-        childWhenDragging: IgnorePointerWidget(child: widget.child),
-        onDragStarted: () {
-          _draggingFeedbackSize = widget._indexGlobalKey.currentContext?.size;
-          widget.onDragStarted(
-            widget.child,
-            widget.draggingData.draggingIndex,
-            _draggingFeedbackSize,
-          );
-        },
-        dragAnchorStrategy: childDragAnchorStrategy,
-        // When the drag ends inside a DragTarget widget, the drag
-        // succeeds, and we reorder the widget into position appropriately.
-        onDragCompleted: () {
-          widget.onDragEnded(widget.draggingData);
-        },
-        // When the drag does not end inside a DragTarget widget, the
-        // drag fails, but we still reorder the widget to the last position it
-        // had been dragged to.
-        onDraggableCanceled: (Velocity velocity, Offset offset) =>
-            widget.onDragEnded(widget.draggingData),
-        child: widget.child,
-      );
-    }
+    return draggableWidget;
   }
 
   Widget _buildDraggableFeedback(
@@ -242,50 +248,6 @@ class PhantomWidget extends StatelessWidget {
       opacity: opacity,
       child: child,
     );
-  }
-}
-
-class PassedInPhantomWidget extends PhantomWidget {
-  final PassedInPhantomContext _phantomContext;
-  PassedInPhantomContext get phantomContext => _phantomContext;
-
-  PassedInPhantomWidget({
-    required double opacity,
-    required PassedInPhantomContext phantomContext,
-    Key? key,
-  })  : _phantomContext = phantomContext,
-        super(
-          child: phantomContext.draggingWidget,
-          opacity: opacity,
-          key: key,
-        );
-}
-
-class PhantomData {
-  int _insertedIndex = -1;
-
-  int get insertedIndex => _insertedIndex;
-
-  bool get hasInsert => _insertedIndex != -1;
-
-  set insertedIndex(int value) {
-    if (_insertedIndex != value) {
-      Log.trace('[$PhantomData] set insert index: $value');
-      _insertedIndex = value;
-    }
-  }
-
-  int _deletedIndex = -1;
-
-  bool get hasDelete => _deletedIndex != -1;
-
-  int get deletedIndex => _deletedIndex;
-
-  set deleteIndex(int value) {
-    if (_deletedIndex != value) {
-      Log.trace('[$PhantomData] set delete index: $value');
-      _deletedIndex = value;
-    }
   }
 }
 

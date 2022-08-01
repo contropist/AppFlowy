@@ -3,11 +3,12 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
-import '../../../flowy_board.dart';
 import '../../utils/log.dart';
-import '../board_mixin.dart';
+import '../board_column/board_column.dart';
+import 'reorder_mixin.dart';
 import 'drag_target.dart';
 import 'drag_state.dart';
+import 'reorder_flex_ext.dart';
 
 typedef OnDragStarted = void Function(int index);
 typedef OnDragEnded = void Function();
@@ -15,74 +16,90 @@ typedef OnReorder = void Function(int fromIndex, int toIndex);
 typedef OnDeleted = void Function(int deletedIndex);
 typedef OnInserted = void Function(int insertedIndex);
 typedef OnReveivePassedInPhantom = void Function(
-    DraggingContext draggingContext, int phantomIndex);
+    FlexDragTargetData dragTargetData, int phantomIndex);
 
-class BoardReorderFlex extends StatefulWidget
-    with DraggingColumn<BoardColumnItem> {
+abstract class ReoderFlextDataSource {
+  String get id;
+  List<ReoderFlextItem> get items;
+}
+
+abstract class ReoderFlextItem {}
+
+class ReorderFlex extends StatefulWidget with DraggingColumn<ReoderFlextItem> {
   final Widget? header;
   final Widget? footer;
-  final BoardColumnDataController listData;
-  final List<Widget> children;
-  final BoardColumnItemWidgetBuilder builder;
-  final ScrollController? scrollController;
   final BoardColumnConfig config;
-  final OnDragStarted? onDragStarted;
-  final OnReorder onReorder;
-  final OnDragEnded? onDragEnded;
-  final OnReveivePassedInPhantom onPassedInPhantom;
+
+  final List<Widget> children;
   final EdgeInsets? padding;
   final Axis direction = Axis.vertical;
   final MainAxisAlignment mainAxisAlignment = MainAxisAlignment.start;
+  final ScrollController? scrollController;
 
-  const BoardReorderFlex({
+  final OnDragStarted? onDragStarted;
+  final OnReorder onReorder;
+  final OnDragEnded? onDragEnded;
+
+  final BoardColumnItemWidgetBuilder builder;
+  final ReoderFlextDataSource dataSource;
+
+  final DragTargetExtension? dragTargetExtension;
+
+  const ReorderFlex({
     Key? key,
     this.header,
     this.footer,
-    required this.listData,
+    this.scrollController,
+    required this.dataSource,
     required this.children,
     required this.builder,
-    this.scrollController,
     required this.config,
     this.onDragStarted,
     required this.onReorder,
     this.onDragEnded,
-    required this.onPassedInPhantom,
+    this.dragTargetExtension,
     // ignore: unused_element
     this.padding,
   }) : super(key: key);
 
   @override
-  State<BoardReorderFlex> createState() => BoardReorderFlexState();
+  State<ReorderFlex> createState() => ReorderFlexState();
 
   @override
-  String get listId => listData.id;
+  String get id => dataSource.id;
 
   @override
-  BoardColumnItem itemAtIndex(int index) {
-    return listData.items[index];
+  ReoderFlextItem itemAtIndex(int index) {
+    return dataSource.items[index];
   }
 }
 
-class BoardReorderFlexState extends State<BoardReorderFlex>
-    with BoardMixin, TickerProviderStateMixin<BoardReorderFlex> {
-  // Controls scrolls and measures scroll progress.
+class ReorderFlexState extends State<ReorderFlex>
+    with ReorderFlexMinxi, TickerProviderStateMixin<ReorderFlex> {
+  /// Controls scrolls and measures scroll progress.
   late ScrollController _scrollController;
   ScrollPosition? _attachedScrollPosition;
-  // Whether or not we are currently scrolling this view to show a widget.
+
+  /// Whether or not we are currently scrolling this view to show a widget.
   bool _scrolling = false;
 
+  late DraggingState dragState;
   late DragAnimationController _dragAnimationController;
-  late DraggingState _dragState;
 
-  BoardReorderFlex get currentBoardList => widget;
+  ReorderFlex get currentBoardList => widget;
 
   @override
   void initState() {
-    _dragState = DraggingState();
+    dragState = DraggingState();
+
     _dragAnimationController = DragAnimationController(
       reorderAnimationDuration: widget.config.reorderAnimationDuration,
       scrollAnimationDuration: widget.config.scrollAnimationDuration,
-      entranceAnimateStatusChanged: _onEntranceAnimationStatusChanged,
+      entranceAnimateStatusChanged: (status) {
+        if (status == AnimationStatus.completed) {
+          setState(() => _requestAnimationToNextIndex());
+        }
+      },
       vsync: this,
     );
 
@@ -145,27 +162,19 @@ class BoardReorderFlexState extends State<BoardReorderFlex>
     super.dispose();
   }
 
-  void _onEntranceAnimationStatusChanged(AnimationStatus status) {
-    if (status == AnimationStatus.completed) {
-      setState(() {
-        _requestAnimationToNextIndex();
-      });
-    }
-  }
-
   void _requestAnimationToNextIndex({bool isAcceptingNewTarget = false}) {
     /// Update the dragState and animate to the next index if the current
     /// dragging animation is completed. Otherwise, it will get called again
     /// when the animation finishs.
 
     if (_dragAnimationController.isEntranceAnimationCompleted) {
-      _dragState.removePhantom();
+      dragState.removePhantom();
 
-      if (!isAcceptingNewTarget && _dragState.didDragTargetMoveToNext()) {
+      if (!isAcceptingNewTarget && dragState.didDragTargetMoveToNext()) {
         return;
       }
 
-      _dragState.moveDragTargetToNext();
+      dragState.moveDragTargetToNext();
       _dragAnimationController.animateToNext();
     }
   }
@@ -177,44 +186,45 @@ class BoardReorderFlexState extends State<BoardReorderFlex>
       final dragTarget = _buildDragTarget(context, child, childIndex);
       int shiftedIndex = childIndex;
 
-      if (_dragState.isOverlapWithPhantom()) {
-        shiftedIndex = _dragState.calculateShiftedIndex(childIndex);
+      if (dragState.isOverlapWithPhantom()) {
+        shiftedIndex = dragState.calculateShiftedIndex(childIndex);
         Log.trace('childIndex: $childIndex shiftedIndex: $shiftedIndex');
       }
 
-      final currentIndex = _dragState.currentIndex;
-      final dragPhantomIndex = _dragState.phantomIndex;
+      Log.trace(dragState.toString());
+      final currentIndex = dragState.currentIndex;
+      final dragPhantomIndex = dragState.phantomIndex;
 
       if (shiftedIndex == currentIndex || childIndex == dragPhantomIndex) {
         Widget dragSpace;
-        if (_dragState.draggingWidget != null) {
-          if (_dragState.draggingWidget is PhantomWidget) {
-            dragSpace = _dragState.draggingWidget!;
+        if (dragState.draggingWidget != null) {
+          if (dragState.draggingWidget is PhantomWidget) {
+            dragSpace = dragState.draggingWidget!;
           } else {
             dragSpace = PhantomWidget(
               opacity: widget.config.draggingWidgetOpacity,
-              child: _dragState.draggingWidget,
+              child: dragState.draggingWidget,
             );
           }
         } else {
-          dragSpace = SizedBox.fromSize(size: _dragState.dropAreaSize);
+          dragSpace = SizedBox.fromSize(size: dragState.dropAreaSize);
         }
 
         /// Return the dragTarget it is not start dragging. The size of the
         /// dragTarget is the same as the the passed in child.
         ///
-        if (_dragState.isNotDragging()) {
+        if (dragState.isNotDragging()) {
           return _buildDraggingContainer(children: [dragTarget]);
         }
 
         /// Determine the size of the drop area to show under the dragging widget.
-        final feedbackSize = _dragState.feedbackSize;
+        final feedbackSize = dragState.feedbackSize;
         Widget appearSpace = _makeAppearSpace(dragSpace, feedbackSize);
         Widget disappearSpace = _makeDisappearSpace(dragSpace, feedbackSize);
 
         /// When start dragging, the dragTarget, [BoardDragTarget], will
         /// return a [IgnorePointerWidget] which size is zero.
-        if (_dragState.isPhantomAboveDragTarget()) {
+        if (dragState.isPhantomAboveDragTarget()) {
           //the phantom is moving down, i.e. the tile below the phantom is moving up
           Log.trace('index:$childIndex item moving up / phantom moving down');
           if (shiftedIndex == currentIndex && childIndex == dragPhantomIndex) {
@@ -237,7 +247,7 @@ class BoardReorderFlexState extends State<BoardReorderFlex>
         }
 
         ///
-        if (_dragState.isPhantomBelowDragTarget()) {
+        if (dragState.isPhantomBelowDragTarget()) {
           //the phantom is moving up, i.e. the tile above the phantom is moving down
           Log.trace('index:$childIndex item moving down / phantom moving up');
           if (shiftedIndex == currentIndex && childIndex == dragPhantomIndex) {
@@ -259,10 +269,10 @@ class BoardReorderFlexState extends State<BoardReorderFlex>
           }
         }
 
-        assert(!_dragState.isOverlapWithPhantom());
+        assert(!dragState.isOverlapWithPhantom());
 
         List<Widget> children = [];
-        if (_dragState.isDragTargetMovingDown()) {
+        if (dragState.isDragTargetMovingDown()) {
           children.addAll([dragTarget, appearSpace]);
         } else {
           children.addAll([appearSpace, dragTarget]);
@@ -274,6 +284,100 @@ class BoardReorderFlexState extends State<BoardReorderFlex>
       /// the same and it prevent's layout alignment issue
       return _buildDraggingContainer(children: [dragTarget]);
     });
+  }
+
+  ReorderDragTarget _buildDragTarget(
+      BuildContext builderContext, Widget child, int childIndex) {
+    return ReorderDragTarget<FlexDragTargetData>(
+      dragTargetData: FlexDragTargetData(
+        draggingIndex: childIndex,
+        state: dragState,
+        column: widget,
+      ),
+      onDragStarted: (draggingWidget, draggingIndex, size) {
+        _startDragging(draggingWidget, draggingIndex, size);
+        widget.onDragStarted?.call(draggingIndex);
+      },
+      onDragEnded: (dragTargetData) {
+        // if (currentBoardList != dragTargetData.boardList) {
+        //   setState(() {
+        //     _dragAnimationController.reverseAnimation();
+        //     _dragState.endDragging();
+        //     widget.onDragEnded?.call();
+        //   });
+        // } else {
+        //   setState(() {
+        //     _onReordered(
+        //       _dragState.dragStartIndex,
+        //       _dragState.currentIndex,
+        //     );
+        //     _dragState.endDragging();
+        //     widget.onDragEnded?.call();
+        //   });
+        // }
+
+        setState(() {
+          _onReordered(
+            dragState.dragStartIndex,
+            dragState.currentIndex,
+          );
+          dragState.endDragging();
+          widget.onDragEnded?.call();
+        });
+      },
+      onWillAccept: (FlexDragTargetData dragTargetData) {
+        Log.trace(
+            '[$ReorderDragTarget] ${widget.dataSource.id} on will accept');
+        assert(widget.dataSource.items.length > childIndex);
+
+        if (_requestDragExtensionToHanlder(
+          dragTargetData,
+          (extension) {
+            extension.onWillAccept(
+              this,
+              builderContext,
+              dragTargetData,
+              dragState.isDragging(),
+              dragTargetData.draggingIndex,
+              childIndex,
+            );
+          },
+        )) {
+          return true;
+        } else {
+          final dragIndex = dragTargetData.draggingIndex;
+          return onWillAccept(builderContext, dragIndex, childIndex);
+        }
+      },
+      onAccept: (dragTargetData) {
+        _requestDragExtensionToHanlder(
+          dragTargetData,
+          (extension) => extension.onAccept(dragTargetData),
+        );
+      },
+      onLeave: (dragTargetData) {
+        _requestDragExtensionToHanlder(
+          dragTargetData,
+          (extension) => extension.onLeave(dragTargetData),
+        );
+      },
+      draggableTargetBuilder:
+          widget.dragTargetExtension?.draggableTargetBuilder,
+      child: child,
+    );
+  }
+
+  bool _requestDragExtensionToHanlder(
+    FlexDragTargetData dragTargetData,
+    void Function(DragTargetExtension) callback,
+  ) {
+    final extension = widget.dragTargetExtension;
+    if (extension != null && extension.canHandler(dragTargetData)) {
+      callback(extension);
+      return true;
+    } else {
+      return false;
+    }
   }
 
   Widget _makeAppearSpace(Widget child, Size? feedbackSize) {
@@ -294,101 +398,30 @@ class BoardReorderFlexState extends State<BoardReorderFlex>
     );
   }
 
-  BoardDragTarget _buildDragTarget(
-      BuildContext builderContext, Widget child, int childIndex) {
-    return BoardDragTarget<DraggingContext>(
-      draggingData: DraggingContext<BoardColumnItem>(
-        draggingIndex: childIndex,
-        state: _dragState,
-        boardList: widget,
-      ),
-      onDragStarted: (draggingWidget, draggingIndex, size) {
-        _startDragging(draggingWidget, draggingIndex, size);
-        widget.onDragStarted?.call(draggingIndex);
-      },
-      onDragEnded: (draggingContext) {
-        if (currentBoardList != draggingContext.boardList) {
-          setState(() {
-            _dragAnimationController.reverseAnimation();
-            _dragState.endDragging();
-            widget.onDragEnded?.call();
-          });
-        } else {
-          setState(() {
-            _onReordered(
-              _dragState.dragStartIndex,
-              _dragState.currentIndex,
-            );
-            _dragState.endDragging();
-            widget.onDragEnded?.call();
-          });
-        }
-      },
-      onWillAccept: (DraggingContext draggingContext) {
-        Log.trace('[$BoardDragTarget] ${widget.listData.id} on will accept');
-        assert(widget.listData.items.length > childIndex);
-
-        /// If the currentBoardList equal to the draggingContext's boardList,
-        /// it means the dragTarget is dragging on the top of its own list.
-        /// Otherwise, it means the dargTarget was moved to another list.
-        ///
-        if (currentBoardList != draggingContext.boardList) {
-          Log.debug(
-              'Try move List${draggingContext.listId}:${draggingContext.draggingIndex} '
-              'to List${widget.listData.id}:$childIndex');
-          widget.onPassedInPhantom(draggingContext, childIndex);
-
-          if (_dragState.isDragging()) {
-            final dragIndex = draggingContext.draggingIndex;
-            _onWillAccept(builderContext, dragIndex, childIndex);
-          }
-
-          return true;
-        } else {
-          final dragIndex = draggingContext.draggingIndex;
-          return _onWillAccept(builderContext, dragIndex, childIndex);
-        }
-      },
-      onAccept: (draggingContext) {
-        Log.debug('[$BoardDragTarget] ${widget.listData.id} on onAccept');
-
-        // if (currentBoardList != draggingContext.boardList) {
-        //   /// The dragTarget was moved to another list.
-        //   draggingContext.boardList.onDeleted(draggingContext.draggingIndex);
-        //   widget.onInserted(childIndex);
-        // }
-      },
-      onLeave: (draggingContext) {
-        // Log.debug('[$BoardDragTarget] ${widget.listData.id} on leave');
-      },
-      child: child,
-    );
-  }
-
   void _startDragging(
-      Widget draggingWidget, int dragIndex, Size? feedbackSize) {
-    Log.trace(
-        'Start dragging: $draggingWidget at $dragIndex with feedbackSize: $feedbackSize');
-
+    Widget draggingWidget,
+    int dragIndex,
+    Size? feedbackSize,
+  ) {
     setState(() {
-      _dragState.startDragging(draggingWidget, dragIndex, feedbackSize);
+      dragState.startDragging(draggingWidget, dragIndex, feedbackSize);
       _dragAnimationController.startDargging();
     });
   }
 
-  bool _onWillAccept(BuildContext context, int? dragIndex, int childIndex) {
+  bool onWillAccept(BuildContext context, int? dragIndex, int childIndex) {
     /// The [willAccept] will be true if the dargTarget is the widget that gets
     /// dragged and it is dragged on top of the other dragTargets.
     bool willAccept =
-        _dragState.dragStartIndex == dragIndex && dragIndex != childIndex;
+        dragState.dragStartIndex == dragIndex && dragIndex != childIndex;
     Log.trace(
-        "List${widget.listData.id}: dragIndex: $dragIndex, childIndex: $childIndex");
+        "List${widget.dataSource.id}: dragIndex: $dragIndex, childIndex: $childIndex");
     setState(() {
       if (willAccept) {
-        int shiftedIndex = _dragState.calculateShiftedIndex(childIndex);
-        _dragState.updateNextIndex(shiftedIndex);
+        int shiftedIndex = dragState.calculateShiftedIndex(childIndex);
+        dragState.updateNextIndex(shiftedIndex);
       } else {
-        _dragState.updateNextIndex(childIndex);
+        dragState.updateNextIndex(childIndex);
       }
 
       _requestAnimationToNextIndex(isAcceptingNewTarget: true);
@@ -460,8 +493,8 @@ class BoardReorderFlexState extends State<BoardReorderFlex>
     // necessary to reveal the selected context at the top or bottom of the
     // screen, then it is already on-screen.
     final double margin = widget.direction == Axis.horizontal
-        ? _dragState.dropAreaSize.width
-        : _dragState.dropAreaSize.height;
+        ? dragState.dropAreaSize.width
+        : dragState.dropAreaSize.height;
     if (_scrollController.hasClients) {
       final double scrollOffset = _scrollController.offset;
       final double topOffset = max(

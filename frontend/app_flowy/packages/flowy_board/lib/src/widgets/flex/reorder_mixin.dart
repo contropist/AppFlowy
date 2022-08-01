@@ -1,8 +1,8 @@
 import 'package:flutter/widgets.dart';
 
-import 'transitions.dart';
+import '../transitions.dart';
 
-mixin BoardMixin {
+mixin ReorderFlexMinxi {
   @protected
   Widget makeAppearingWidget(
     Widget child,
