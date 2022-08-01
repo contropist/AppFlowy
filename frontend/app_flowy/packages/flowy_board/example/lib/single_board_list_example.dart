@@ -9,11 +9,11 @@ class SingleBoardListExample extends StatefulWidget {
 }
 
 class _SingleBoardListExampleState extends State<SingleBoardListExample> {
-  final BoardData boardData = BoardData();
+  final BoardDataController boardData = BoardDataController();
 
   @override
   void initState() {
-    final boardList1 = BoardListData(id: "1", items: [
+    final boardList1 = BoardColumnDataController(id: "1", items: [
       TextItem("a"),
       TextItem("b"),
       TextItem("c"),
@@ -50,7 +50,7 @@ class _RowWidget extends StatelessWidget {
   }
 }
 
-class TextItem extends BoardListItem {
+class TextItem extends BoardColumnItem {
   final String s;
 
   TextItem(this.s);

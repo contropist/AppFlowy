@@ -9,17 +9,17 @@ class MultiBoardListExample extends StatefulWidget {
 }
 
 class _MultiBoardListExampleState extends State<MultiBoardListExample> {
-  final BoardData boardData = BoardData();
+  final BoardDataController boardData = BoardDataController();
 
   @override
   void initState() {
-    final boardList1 = BoardListData(id: "1", items: [
+    final boardList1 = BoardColumnDataController(id: "1", items: [
       TextItem("a"),
       TextItem("b"),
       TextItem("c"),
       TextItem("d"),
     ]);
-    final boardList2 = BoardListData(id: "2", items: [
+    final boardList2 = BoardColumnDataController(id: "2", items: [
       TextItem("1"),
       TextItem("2"),
       TextItem("3"),
@@ -59,7 +59,7 @@ class _RowWidget extends StatelessWidget {
   }
 }
 
-class TextItem extends BoardListItem {
+class TextItem extends BoardColumnItem {
   final String s;
 
   TextItem(this.s);

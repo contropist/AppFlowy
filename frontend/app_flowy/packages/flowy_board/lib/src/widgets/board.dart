@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../flowy_board.dart';
 import '../utils/log.dart';
+import 'flex/drag_state.dart';
 
 class DraggingItem {
   final String listId;
@@ -14,13 +15,14 @@ class DraggingItem {
 
 class PhantomItem {
   final String listId;
-  final BoardListItem item;
+  final BoardColumnItem item;
 
   PhantomItem(this.listId, this.item);
 }
 
-class BoardData extends ChangeNotifier with EquatableMixin {
-  final LinkedHashMap<String, BoardListData> lists = LinkedHashMap();
+class BoardDataController extends ChangeNotifier with EquatableMixin {
+  final LinkedHashMap<String, BoardColumnDataController> lists =
+      LinkedHashMap();
 
   /// The index that the dragging widget occupied after moving into another list
   DraggingItem? removeItem;
@@ -30,62 +32,43 @@ class BoardData extends ChangeNotifier with EquatableMixin {
 
   PhantomItem? phantomItem;
 
-  BoardData();
-
-  void markDelete(String listId, int index) {
-    if (removeItem?.listId == listId && removeItem?.index == index) {
-      return;
-    }
-
-    Log.info('Mark $listId:$index as deletable');
-    removeItem = DraggingItem(listId, index);
-  }
-
-  void markInsert(String listId, int index) {
-    if (insertItem?.listId == listId && insertItem?.index == index) {
-      insertItem = null;
-      return;
-    }
-
-    Log.info('Mark $listId:$index as insertable');
-    insertItem = DraggingItem(listId, index);
-  }
+  BoardDataController();
 
   /// Insert the [Phantom] to list with [listId] and remove the [Phantom]
   /// from the others which [listId] is not equal to the [listId].
   ///
-  void insertPhantom(
-    String listId,
-    int insertedIndex,
-    BoardListItem boardListItem,
-    Widget? draggingWidget,
-  ) {
+  void receivePassedInPhantom(
+      String listId, DraggingContext draggingContext, int phantomIndex) {
+    _markInsert(listId, phantomIndex);
+    _markDelete(draggingContext.listId, draggingContext.draggingIndex);
+
     if (phantomItem != null) {
       if (phantomItem!.listId != listId) {
         /// Remove the phanotm from the old list
-        lists[phantomItem!.listId]?.removePhantom();
+        lists[phantomItem!.listId]?.removePassedInPhantom();
       } else {
         /// Update the existing phantom index
         lists[phantomItem!.listId]
-            ?.insertPhantom(insertedIndex, boardListItem, draggingWidget);
+            ?.insertPhantom(draggingContext, phantomIndex);
       }
     } else {
       /// Insert new phantom to list
-      phantomItem = PhantomItem(listId, boardListItem);
-      lists[listId]
-          ?.insertPhantom(insertedIndex, boardListItem, draggingWidget);
+      phantomItem = PhantomItem(listId, draggingContext.bindData);
+      lists[listId]?.insertPhantom(draggingContext, phantomIndex);
     }
   }
 
-  void removePhantom() {
+  void removePassedInPhantom() {
     if (phantomItem != null) {
-      lists[phantomItem!.listId]?.removePhantom();
+      lists[phantomItem!.listId]?.removePassedInPhantom();
     }
 
     phantomItem = null;
   }
 
   void swapListDataIfNeed() {
+    Log.trace(
+        "[$BoardColumnDataController] Remove: $removeItem Insert: $insertItem");
     if (insertItem == null) return;
     assert(removeItem != null);
 
@@ -95,14 +78,11 @@ class BoardData extends ChangeNotifier with EquatableMixin {
     final insertListId = insertItem!.listId;
     final insertIndex = insertItem!.index;
 
+    Log.info(
+        '[$BoardColumnDataController] move List$removeListId:$removeIndex to List$insertListId:$insertIndex');
     final item = lists[removeListId]?.removeAt(removeIndex);
     assert(item != null);
-
-    if (item != null) {
-      Log.info(
-          'Did move item from List$removeListId:$removeIndex to List$insertListId:$insertIndex');
-      lists[insertListId]?.insert(insertIndex, item);
-    }
+    lists[insertListId]?.insert(insertIndex, item!);
 
     removeItem = null;
     insertItem = null;
@@ -111,6 +91,24 @@ class BoardData extends ChangeNotifier with EquatableMixin {
   @override
   List<Object?> get props {
     return [lists.values];
+  }
+
+  void _markDelete(String listId, int index) {
+    if (removeItem?.listId == listId && removeItem?.index == index) {
+      return;
+    }
+
+    Log.info('Mark $listId:$index as deletable');
+    removeItem = DraggingItem(listId, index);
+  }
+
+  void _markInsert(String listId, int index) {
+    if (insertItem?.listId == listId && insertItem?.index == index) {
+      return;
+    }
+
+    Log.info('Mark $listId:$index as insertable');
+    insertItem = DraggingItem(listId, index);
   }
 }
 
@@ -126,10 +124,10 @@ class Board extends StatelessWidget {
   /// Defaults to 0.0.
   final double runSpacing;
 
-  final BoardListItemWidgetBuilder builder;
+  final BoardColumnItemWidgetBuilder builder;
 
   ///
-  final BoardData boardData;
+  final BoardDataController boardData;
 
   const Board({
     required this.boardData,
@@ -147,7 +145,7 @@ class Board extends StatelessWidget {
         builder: (context, notifier, child) {
           List<Widget> children = [];
           boardData.lists.forEach((key, listData) {
-            final child = buildBoardList(key, listData);
+            final child = buildBoardColumn(key, listData);
             if (children.isEmpty) {
               children.add(SizedBox(width: spacing));
             }
@@ -166,36 +164,27 @@ class Board extends StatelessWidget {
   }
 
   ///
-  Widget buildBoardList(String listId, BoardListData listData) {
+  Widget buildBoardColumn(String columnId, BoardColumnDataController listData) {
     return ChangeNotifierProvider.value(
       value: listData,
-      child: Consumer<BoardListData>(
+      child: Consumer<BoardColumnDataController>(
         builder: (context, value, child) {
-          return BoardList(
-            key: ValueKey(listId),
+          return BoardColumn(
+            key: ValueKey(columnId),
             builder: builder,
-            listData: listData,
+            dataController: listData,
             scrollController: ScrollController(),
-            onDeleted: (listId, index) {
-              boardData.markDelete(listId, index);
-            },
-            onInserted: (listId, index) {
-              boardData.markInsert(listId, index);
-            },
             onReorder: (_, int fromIndex, int toIndex) {
               listData.move(fromIndex, toIndex);
             },
             onDragEnded: (_) {
-              boardData.removePhantom();
+              Log.debug("$columnId end dragging");
+              boardData.removePassedInPhantom();
               boardData.swapListDataIfNeed();
             },
-            onWillInserted: (listId, insertedIndex, item, draggingWidget) {
-              boardData.insertPhantom(
-                listId,
-                insertedIndex,
-                item,
-                draggingWidget,
-              );
+            onPassedInPhantom: (listId, draggingContext, phantomIndex) {
+              boardData.receivePassedInPhantom(
+                  listId, draggingContext, phantomIndex);
             },
           );
         },
